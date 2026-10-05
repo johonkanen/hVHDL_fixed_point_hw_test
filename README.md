@@ -140,6 +140,24 @@ the first wrong input.
 `lut_divider_pkg.lut_divide`; the quotients are within about 2.6·10⁻⁴ of the
 exact division (16-bit reciprocal table).
 
+`full_range_sqrt` (32 bits, root = √(radicand · 2⁻¹⁶) · 2¹⁶) through
+`source/sqrt_sweep.vhd`, registers from 112:
+
+| addr      | contents                                                        |    |
+|----------:|-----------------------------------------------------------------|----|
+| 112       | radicand (also the sweep start / LFSR seed)                     | RW |
+| 113       | write → one square root                                         | WO |
+| 114       | last root                                                       | RO |
+| 115       | clock edges from the request to ready (21, or 23 with the pre-adder registered) | RO |
+| 116       | write N → sweep N roots, one per clock (0 = 65536)              | WO |
+| 117       | sweep mode: bit 0 = 0 radicand +1 per root, bit 0 = 1 radicands from a 32-bit Galois LFSR (x >> 1 xor 0x80200003) shifted right by their own low 5 bits, bit 1 irregular gaps | RW |
+| 118, 119  | sweep checksums: s1 += root, s2 += s1                           | RO |
+| 120       | ready pulses of the last command                                | RO |
+
+`test_uart.py` checks single roots and sweeps against a bit-exact model of
+`full_range_sqrt_pkg.get_full_range_sqrt`; the roots are within about
+2.6·10⁻⁴ of the exact square root (16-bit sqrt table).
+
 `fixed_dsp(rtl)` recomputes its result register on every clock and the core
 drives `init_fixed_dsp` while idle, so an accumulate only carries over
 between the back-to-back requests of one burst (register 38).
@@ -156,6 +174,9 @@ operands with every flag combination and bursts of up to 300.
   sets `g_dsp_pre_add_register` (the `fixed_dsp` generic `g_pre_add_register`),
   which adds a register between the pre-adder and the multiplier: +0.39 ns at
   120 MHz, latency 3.
+* **`ti60evm/build.sh program` checks that the EVM's FT4232H is attached.**
+  Without it, Efinity's programmer falls back to any FTDI device it finds and
+  drives JTAG over its pins, e.g. the Alchitry's UART channel.
 * **Ti60 EVM needs `infer-sync-set-reset` off** in `ti60evm/uart_test.xml`.
   With Efinity 2026.1's default (on), the 32×32 product is wrong for most
   operands (2.5 × 1.5 gives 0) and an accumulator reset reads back 1. The

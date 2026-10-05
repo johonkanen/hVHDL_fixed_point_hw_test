@@ -39,10 +39,12 @@ lib.add_source_files(FIXED / "reciprocal_calculator/reciprocal_calculator.vhd")
 lib.add_source_files(FIXED / "lut_interpolation/lut_sqrt_pkg.vhd")
 lib.add_source_files(FIXED / "sqrt_calculator/sqrt_calculator.vhd")
 lib.add_source_files(FIXED / "lut_divider/lut_divider.vhd")
+lib.add_source_files(FIXED / "full_range_sqrt/full_range_sqrt.vhd")
 
 lib.add_source_files(SOURCE / "git_hash_pkg.vhd")
 lib.add_source_files(SOURCE / "lut_sweep.vhd")
 lib.add_source_files(SOURCE / "divider_sweep.vhd")
+lib.add_source_files(SOURCE / "sqrt_sweep.vhd")
 lib.add_source_files(SOURCE / "uart_test_core.vhd")
 
 lib.add_source_files(ROOT / "testbench/uart_test_core_tb.vhd")

@@ -9,6 +9,7 @@ context vunit_lib.vunit_context;
     use work.lut_reciprocal_pkg.all;
     use work.lut_sqrt_pkg.all;
     use work.lut_divider_pkg.all;
+    use work.full_range_sqrt_pkg.all;
 
 -- talks to uart_test_core through its uart pins with a behavioural 8N1
 -- uart, the same byte frames test_uart.py sends :
@@ -200,6 +201,46 @@ begin
             check_register(divider_base + 11, zeros);
         end check_divider_sweep;
 
+        ------------------------------
+        constant root_base  : natural := 112;
+        constant root_radix : natural := 16;
+
+        procedure check_root (radicand : std_logic_vector(31 downto 0)) is
+        begin
+            write_register(root_base + 0, radicand);
+            write_register(root_base + 1, 1);
+            check_register(root_base + 2, std_logic_vector(get_full_range_sqrt(unsigned(radicand), root_radix)));
+        end check_root;
+
+        procedure check_root_sweep (mode : natural; start : std_logic_vector(31 downto 0); count : natural) is
+            variable x          : std_logic_vector(31 downto 0) := start;
+            variable sum1, sum2 : unsigned(31 downto 0) := (others => '0');
+            variable radicand   : unsigned(31 downto 0);
+            variable readies    : std_logic_vector(31 downto 0);
+        begin
+            for i in 1 to count loop
+                if mode mod 2 = 0 then
+                    radicand := unsigned(x);
+                    x := std_logic_vector(unsigned(x) + 1);
+                else
+                    radicand := shift_right(unsigned(x), to_integer(unsigned(x(4 downto 0))));
+                    x := galois_step(x);
+                end if;
+                sum1 := sum1 + get_full_range_sqrt(radicand, root_radix);
+                sum2 := sum2 + sum1;
+            end loop;
+            write_register(root_base + 0, start);
+            write_register(root_base + 5, mode);
+            write_register(root_base + 4, count mod 2**16);
+            loop
+                read_register(root_base + 8, readies);
+                exit when to_integer(unsigned(readies)) >= count;
+            end loop;
+            check_register(root_base + 6, std_logic_vector(sum1));
+            check_register(root_base + 7, std_logic_vector(sum2));
+            check_register(root_base + 8, count);
+        end check_root_sweep;
+
         procedure check_sweep (base : natural; start : natural; count : natural; mode : natural) is
             variable sum1, sum2 : unsigned(31 downto 0) := (others => '0');
             variable input      : unsigned(15 downto 0) := to_unsigned(start, 16);
@@ -319,11 +360,23 @@ begin
         check_divider_sweep(mode => 1, numerator => 16#1234567#, denominator => 16#7654321#, count => 2**16);
         check_divider_sweep(mode => 3, numerator => 16#1357#, denominator => 16#2468ace#, count => 20000);
 
+        -- full_range_sqrt
+        check_root(x"00000000");
+        check_root(x"00010000");
+        check_root(x"00020000");
+        check_root(x"ffffffff");
+        check_root(x"00000003");
+        check_root(x"12345678");
+
+        check_root_sweep(mode => 0, start => x"00000000", count => 6000);
+        check_root_sweep(mode => 1, start => x"01234567", count => 2**16);
+        check_root_sweep(mode => 3, start => x"0badcafe", count => 20000);
+
         test_runner_cleanup(runner);
         wait;
     end process stimulus;
 
-    test_runner_watchdog(runner, 500 ms);
+    test_runner_watchdog(runner, 800 ms);
 ------------------------------------------------------------------------
     -- 8N1 receiver, runs alongside the sender since the fpga can start
     -- its response while the last stop bit of a request is still going out

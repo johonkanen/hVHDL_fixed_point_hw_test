@@ -47,6 +47,13 @@ Register map (source/uart_test_core.vhd) :
     101 latency    102 write N -> sweep N divisions (0 = 65536)      RO/WO
     103 sweep mode : bit 0 lfsr operands, bit 1 gaps                 RW
     104 s1   105 s2   106 ready pulses   107 division by zero count  RO
+
+    full_range_sqrt, 32 bit, root = sqrt(radicand * 2**-16) * 2**16
+    112 radicand (also the sweep start / lfsr seed)                RW
+    113 write -> one root   114 root   115 latency                  WO/RO/RO
+    116 write N -> sweep N roots (0 = 65536)                         WO
+    117 sweep mode : bit 0 lfsr radicands, bit 1 gaps               RW
+    118 s1   119 s2   120 ready pulses                              RO
     base +0 input   +1 write -> one request   +2 result               RW/WO/RO
          +3 latency, request at the input to ready, clock edges     RO
          +4 write N -> sweep N inputs from +5, one per clock (0 = 65536) WO
@@ -231,8 +238,37 @@ def lut_divide_model(numerator, denominator, radix, w=32):
     return wrap((product << extra) >> (14 + w - radix + extra - zeros), w)
 
 
+def full_range_sqrt_model(radicand, radix, w=32):
+    """bit exact full_range_sqrt_pkg.get_full_range_sqrt"""
+    if radicand == 0:
+        return 0
+    zeros = w - radicand.bit_length()
+    normalised = radicand << zeros
+    exponent = w - zeros + radix
+    multiplier = 46341 if exponent % 2 else 32768
+    product = sqrt_model((normalised >> (w - 17)) & 0xFFFF) * multiplier
+    extra = max(0, (w + radix) // 2 - 30)
+    return ((product << extra) >> (30 + extra - exponent // 2)) & ((1 << w) - 1)
+
+
 def galois_step(x):
     return (x >> 1) ^ (0x80200003 if x & 1 else 0)
+
+
+def root_sweep_model(mode, start, count, radix):
+    """sums of a sqrt_sweep sweep"""
+    x = start & 0xFFFFFFFF
+    s1 = s2 = 0
+    for _ in range(count):
+        if mode & 1:
+            radicand = x >> (x & 0x1F)
+            x = galois_step(x)
+        else:
+            radicand = x
+            x = (x + 1) & 0xFFFFFFFF
+        s1 = (s1 + full_range_sqrt_model(radicand, radix)) & 0xFFFFFFFF
+        s2 = (s2 + s1) & 0xFFFFFFFF
+    return s1, s2
 
 
 def divider_sweep_model(mode, numerator, denominator, count, radix):
@@ -345,6 +381,7 @@ def run(uart, board, rounds, r):
     for name, (base, model, edges) in CALCULATORS.items():
         run_lut_calculator(uart, name, base, model, edges, rounds, r)
     run_lut_divider(uart, rounds, r)
+    run_full_range_sqrt(uart, rounds, r)
 
     uart.uart.reset_input_buffer()
     time.sleep(0.05)
@@ -548,6 +585,62 @@ def run_lut_divider(uart, rounds, r):
         if 2**12 < abs(exact) < 2**31 - 2:
             worst = max(worst, abs(lut_divide_model(n, d, QUOTIENT_RADIX) - exact) / abs(exact))
     print(f"        lut_divide relative error up to {worst:.2e} for quotients above 2**12")
+
+
+ROOT_BASE = 112
+ROOT_RADIX = 16
+
+
+def square_root(uart, radicand):
+    uart.write(ROOT_BASE + 0, radicand)
+    uart.write(ROOT_BASE + 1, 1)
+    return uart.read(ROOT_BASE + 2)
+
+
+def root_sweep(uart, mode, start, count):
+    uart.write(ROOT_BASE + 0, start)
+    uart.write(ROOT_BASE + 5, mode)
+    uart.write(ROOT_BASE + 4, count & 0xFFFF)
+    for _ in range(100):
+        readies = uart.read(ROOT_BASE + 8)
+        if readies >= count:
+            break
+    return (uart.read(ROOT_BASE + 6), uart.read(ROOT_BASE + 7)), readies
+
+
+def run_full_range_sqrt(uart, rounds, r):
+    print("full_range_sqrt")
+    radicands = [0, 1, 2, 3, 4, 1 << 16, 2 << 16, 4 << 16, 1 << 31, 0xFFFFFFFF, 0x12345678, 1 << 30]
+    for _ in range(max(16, rounds // 8)):
+        radicands.append(r.random.getrandbits(32) >> r.random.randint(0, 31))
+    wrong = [f"{x:#x} -> {y} expected {full_range_sqrt_model(x, ROOT_RADIX)}"
+             for x in radicands if (y := square_root(uart, x)) != full_range_sqrt_model(x, ROOT_RADIX)]
+    r.check(f"{len(radicands)} single roots incl. edge cases", not wrong, ", ".join(wrong[:3]))
+
+    # input 1 + normalise 5 + sqrt_calculator 4 + dsp + multiply 1 + dsp +
+    # shift 5 + output 1, both dsps one longer with the pre-adder register
+    latency = uart.read(ROOT_BASE + 3)
+    expected_latency = 21 + 2 * uart.read(45)
+    r.check(f"pipeline latency {expected_latency} clock edges", latency == expected_latency, f"read {latency}")
+
+    sweeps = [(0, 0, 65536, "radicands 0 .. 65535"),
+              (0, 0xFFFF0000, 65535, "radicands 0xffff0000 .. 0xfffffffe"),
+              (1, 0x1234567, 65536, "65536 lfsr radicands, back to back"),
+              (3, 0xBADCAFE, 65536, "65536 lfsr radicands, irregular gaps")]
+    for _ in range(2):
+        sweeps.append((r.random.choice([1, 3]), r.random.getrandbits(31) | 1, r.random.randint(1, 20000), "random seed"))
+    for mode, start, count, name in sweeps:
+        sums, readies = root_sweep(uart, mode, start, count)
+        ok = sums == root_sweep_model(mode, start, count, ROOT_RADIX) and readies == count
+        r.check(f"sweep {name}", ok, f"{count} roots, {readies} ready")
+
+    worst = 0.0
+    for _ in range(20000):
+        x = r.random.getrandbits(32) >> r.random.randint(0, 31)
+        exact = math.sqrt(x / 2**ROOT_RADIX) * 2**ROOT_RADIX
+        if exact > 2**12:
+            worst = max(worst, abs(full_range_sqrt_model(x, ROOT_RADIX) - exact) / exact)
+    print(f"        full_range_sqrt relative error up to {worst:.2e} for roots above 2**12")
 
 
 def main():

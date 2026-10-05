@@ -23,9 +23,11 @@
         <efx:design_file name="../source/hVHDL_fixed_point/lut_interpolation/lut_sqrt_pkg.vhd" version="default" library="default" />
         <efx:design_file name="../source/hVHDL_fixed_point/sqrt_calculator/sqrt_calculator.vhd" version="default" library="default" />
         <efx:design_file name="../source/hVHDL_fixed_point/lut_divider/lut_divider.vhd" version="default" library="default" />
+        <efx:design_file name="../source/hVHDL_fixed_point/full_range_sqrt/full_range_sqrt.vhd" version="default" library="default" />
         <efx:design_file name="../source/git_hash_pkg.vhd" version="default" library="default" />
         <efx:design_file name="../source/lut_sweep.vhd" version="default" library="default" />
         <efx:design_file name="../source/divider_sweep.vhd" version="default" library="default" />
+        <efx:design_file name="../source/sqrt_sweep.vhd" version="default" library="default" />
         <efx:design_file name="../source/uart_test_core.vhd" version="default" library="default" />
         <efx:design_file name="ti60evm_top.vhd" version="default" library="default" />
         <efx:top_vhdl_arch name="rtl" />

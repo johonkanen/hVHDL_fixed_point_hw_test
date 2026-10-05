@@ -24,6 +24,12 @@ case "${1:-build}" in
         exec efx_run --prj uart_test.xml
         ;;
     program)
+        # without the EVM's FT4232H efx_run falls back to any FTDI device it
+        # finds (e.g. an Alchitry's FT2232) and drives JTAG over its pins
+        if ! lsusb | grep -q 'ID 0403:6011'; then
+            echo "Ti60F225 EVM (FT4232H 0403:6011) is not attached, usbipd attach --wsl --busid <b-p>" >&2
+            exit 1
+        fi
         exec efx_run uart_test.xml --flow program --pgm_opts mode=jtag
         ;;
     peri)
