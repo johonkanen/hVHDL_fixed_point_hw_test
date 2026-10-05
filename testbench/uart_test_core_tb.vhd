@@ -7,6 +7,7 @@ context vunit_lib.vunit_context;
 
     use work.lut_sine_pkg.all;
     use work.lut_reciprocal_pkg.all;
+    use work.lut_sqrt_pkg.all;
 
 -- talks to uart_test_core through its uart pins with a behavioural 8N1
 -- uart, the same byte frames test_uart.py sends :
@@ -109,17 +110,20 @@ begin
 
         constant sine_base       : natural := 48;
         constant reciprocal_base : natural := 64;
+        constant sqrt_base       : natural := 80;
         type natural_array is array (natural range <>) of natural;
-        constant calculator_bases : natural_array := (sine_base, reciprocal_base);
+        constant calculator_bases : natural_array := (sine_base, reciprocal_base, sqrt_base);
 
-        -- the reference functions of lut_sine_pkg and lut_reciprocal_pkg,
+        -- the reference functions of lut_sine_pkg, lut_reciprocal_pkg and lut_sqrt_pkg,
         -- extended to 32 bits as lut_sweep reports them
         impure function expected_result (base : natural; input : unsigned(15 downto 0)) return unsigned is
         begin
             if base = sine_base then
                 return unsigned(resize(get_sine_from_quarter_wave_lut(input), 32));
-            else
+            elsif base = reciprocal_base then
                 return resize(get_reciprocal_from_lut(input), 32);
+            else
+                return resize(get_sqrt_from_lut(input), 32);
             end if;
         end expected_result;
 
@@ -241,7 +245,7 @@ begin
         wait;
     end process stimulus;
 
-    test_runner_watchdog(runner, 200 ms);
+    test_runner_watchdog(runner, 300 ms);
 ------------------------------------------------------------------------
     -- 8N1 receiver, runs alongside the sender since the fpga can start
     -- its response while the last stop bit of a request is still going out

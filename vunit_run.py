@@ -36,6 +36,8 @@ lib.add_source_files(FIXED / "lut_interpolation/lut_sine_pkg.vhd")
 lib.add_source_files(FIXED / "sine_calculator/sine_calculator.vhd")
 lib.add_source_files(FIXED / "lut_interpolation/lut_reciprocal_pkg.vhd")
 lib.add_source_files(FIXED / "reciprocal_calculator/reciprocal_calculator.vhd")
+lib.add_source_files(FIXED / "lut_interpolation/lut_sqrt_pkg.vhd")
+lib.add_source_files(FIXED / "sqrt_calculator/sqrt_calculator.vhd")
 
 lib.add_source_files(SOURCE / "git_hash_pkg.vhd")
 lib.add_source_files(SOURCE / "lut_sweep.vhd")

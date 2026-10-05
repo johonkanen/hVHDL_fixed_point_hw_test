@@ -33,13 +33,15 @@
 --   44 : g_dsp_word_length                                      RO
 --   45 : 1 when g_dsp_pre_add_register is set (latency 3)       RO
 --
--- sine_calculator and reciprocal_calculator, each with its own fixed_dsp
+-- sine_calculator, reciprocal_calculator and sqrt_calculator, each with its own fixed_dsp
 -- (same width and pre-add option), tested through lut_sweep :
 --
 --   48..57 : sine_calculator, 16 bit angle (fraction of a turn) ->
 --            16 bit signed sine
 --   64..73 : reciprocal_calculator, 16 bit x_frac (x = 0.5 + x_frac/2**17)
 --            -> 16 bit unsigned 1/x
+--   80..89 : sqrt_calculator, 16 bit x_frac (x = 0.5 + x_frac/2**17)
+--            -> 16 bit unsigned sqrt(x)
 --
 --   base +0 input  +1 single request  +2 result  +3 latency
 --        +4 sweep N  +5 sweep start  +6 s1  +7 s2  +8 readies  +9 mode
@@ -80,6 +82,7 @@ architecture rtl of uart_test_core is
     use work.git_hash_pkg.all;
     use work.sine_calculator_pkg.all;
     use work.reciprocal_calculator_pkg.all;
+    use work.sqrt_calculator_pkg.all;
 
     signal reset_meta   : std_logic := '1';
     signal system_reset : std_logic := '1';
@@ -90,6 +93,7 @@ architecture rtl of uart_test_core is
     signal bus_from_dsp            : fpga_interconnect_record := init_fpga_interconnect;
     signal bus_from_sine           : fpga_interconnect_record := init_fpga_interconnect;
     signal bus_from_reciprocal     : fpga_interconnect_record := init_fpga_interconnect;
+    signal bus_from_sqrt           : fpga_interconnect_record := init_fpga_interconnect;
 
     signal loopback_register : std_logic_vector(31 downto 0) := (others => '0');
     signal read_counter      : unsigned(31 downto 0) := (others => '0');
@@ -145,6 +149,13 @@ architecture rtl of uart_test_core is
     signal reciprocal_dsp_out  : dsp_out_subtype;
     signal reciprocal_request_value : unsigned(15 downto 0);
     signal reciprocal_request  : std_logic;
+
+    signal sqrt_in            : sqrt_calculator_in_record;
+    signal sqrt_out           : sqrt_calculator_out_record;
+    signal sqrt_dsp_in        : dsp_in_subtype;
+    signal sqrt_dsp_out       : dsp_out_subtype;
+    signal sqrt_request_value : unsigned(15 downto 0);
+    signal sqrt_request       : std_logic;
     ------------------------------------------------------------------
 
     signal heartbeat_counter : natural range 0 to g_clock_frequency_hz/2-1 := 0;
@@ -205,7 +216,7 @@ begin
                 write_data_to_address(bus_from_top, 0, register_bank(bank_index));
             end if;
 
-            bus_to_communications <= bus_from_top and bus_from_dsp and bus_from_sine and bus_from_reciprocal;
+            bus_to_communications <= bus_from_top and bus_from_dsp and bus_from_sine and bus_from_reciprocal and bus_from_sqrt;
 
             if system_reset = '1' then
                 loopback_register     <= (others => '0');
@@ -376,6 +387,39 @@ begin
         clock          => clock
         ,fixed_dsp_in  => reciprocal_dsp_in
         ,fixed_dsp_out => reciprocal_dsp_out
+    );
+
+------------------------------------------------------------------------
+    u_sqrt_sweep : entity work.lut_sweep
+    generic map (g_base_address => 80, g_signed_result => false)
+    port map (
+        clock           => clock
+        ,reset          => system_reset
+        ,bus_in         => bus_from_communications
+        ,bus_out        => bus_from_sqrt
+        ,request_value  => sqrt_request_value
+        ,request_with_1 => sqrt_request
+        ,result         => std_logic_vector(sqrt_out.y)
+        ,ready_with_1   => sqrt_out.ready_with_1
+    );
+
+    sqrt_in <= (x_frac => sqrt_request_value, request_with_1 => sqrt_request);
+
+    u_sqrt_calculator : entity work.sqrt_calculator
+    port map (
+        clock                => clock
+        ,sqrt_calculator_in  => sqrt_in
+        ,sqrt_calculator_out => sqrt_out
+        ,fixed_dsp_in        => sqrt_dsp_in
+        ,fixed_dsp_out       => sqrt_dsp_out
+    );
+
+    u_sqrt_dsp : entity work.fixed_dsp(rtl)
+    generic map (g_pre_add_register => g_dsp_pre_add_register)
+    port map (
+        clock          => clock
+        ,fixed_dsp_in  => sqrt_dsp_in
+        ,fixed_dsp_out => sqrt_dsp_out
     );
 
 ------------------------------------------------------------------------

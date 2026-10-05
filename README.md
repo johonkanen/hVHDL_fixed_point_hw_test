@@ -5,11 +5,11 @@ three boards: a UART register core on the `fpga_communication` link, with the
 library's `fixed_dsp(rtl)` behind it. `test_uart.py` checks every `fixed_dsp`
 result bit for bit against a Python model of the architecture.
 
-| folder      | board                                   | toolchain              | clock              | UART                            |
-|-------------|-----------------------------------------|------------------------|--------------------|---------------------------------|
-| `alchitry/` | Alchitry Au+ (XC7A100T-1FTG256)         | Vivado 2024.2          | 100 MHz → 120 MHz  | FT2232H ch B, 5.0 Mbaud (÷24)   |
+| folder      | board                                    | toolchain              | clock              | UART                            |
+|-------------|------------------------------------------|------------------------|--------------------|---------------------------------|
+| `alchitry/` | Alchitry Au+ (XC7A100T-1FTG256)          | Vivado 2024.2          | 100 MHz → 120 MHz  | FT2232H ch B, 5.0 Mbaud (÷24)   |
 | `axc3000/`  | Arrow AXC3000 (Agilex 3 A3CY100BM16AE7S) | Quartus Pro 26.1.1     | 25 MHz → 120 MHz   | USB Blaster III, 4.8 Mbaud (÷25) |
-| `ti60evm/`  | Efinix Ti60F225 EVM                     | Efinity 2026.1         | 25 MHz → 120 MHz   | FT4232H ch C, 4.8 Mbaud (÷25)    |
+| `ti60evm/`  | Efinix Ti60F225 EVM                      | Efinity 2026.1         | 25 MHz → 120 MHz   | FT4232H ch C, 4.8 Mbaud (÷25)    |
 
 ```
 source/                       submodules (hVHDL_fixed_point, fpga_communication) and the shared core
@@ -93,7 +93,7 @@ reference 0.
 | 44     | dsp word length                                                  | RO |
 | 45     | 1 when the pre-adder is registered (`g_dsp_pre_add_register`)    | RO |
 
-`sine_calculator` and `reciprocal_calculator`, each with its own `fixed_dsp`
+`sine_calculator`, `reciprocal_calculator` and `sqrt_calculator`, each with its own `fixed_dsp`
 (same width and pre-adder option), tested through `source/lut_sweep.vhd`.
 Both take a 16-bit input and give a 16-bit result:
 
@@ -101,12 +101,13 @@ Both take a 16-bit input and give a 16-bit result:
 |-----:|------------|-------|--------|
 | 48   | `sine_calculator` | angle, fraction of a full turn | signed sine |
 | 64   | `reciprocal_calculator` | `x_frac`, x = 0.5 + x_frac / 2¹⁷ | unsigned 1/x, radix 14 |
+| 80   | `sqrt_calculator` | `x_frac`, x = 0.5 + x_frac / 2¹⁷ | unsigned √x, radix 15 |
 
 | addr     | contents                                                         |    |
 |---------:|------------------------------------------------------------------|----|
 | base + 0 | input                                                            | RW |
 | base + 1 | write → one request for the input in base + 0                    | WO |
-| base + 2 | last result, sign extended (sine) or zero extended (1/x)         | RO |
+| base + 2 | last result, sign extended (sine) or zero extended (1/x, √x)     | RO |
 | base + 3 | clock edges from the request at the input to ready (6, or 7 with the pre-adder registered) | RO |
 | base + 4 | write N → sweep N inputs from base + 5 upwards, one per clock (0 = 65536) | WO |
 | base + 5 | sweep start input                                                | RW |
@@ -115,7 +116,8 @@ Both take a 16-bit input and give a 16-bit result:
 | base + 9 | sweep mode: 0 back to back, 1 irregular gaps                     | RW |
 
 `test_uart.py` checks single inputs against bit-exact models of
-`get_sine_from_quarter_wave_lut` and `get_reciprocal_from_lut`, and all-input
+`get_sine_from_quarter_wave_lut`, `get_reciprocal_from_lut` and
+`get_sqrt_from_lut`, and all-input
 and random-range sweeps (back to back and gapped) against the models'
 checksums. On a checksum mismatch it bisects with smaller sweeps and reports
 the first wrong input.

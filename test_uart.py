@@ -39,6 +39,7 @@ Register map (source/uart_test_core.vhd) :
     lut calculators through lut_sweep, 16 bit input, 16 bit result
     48.. sine_calculator, angle (fraction of a turn) -> signed sine
     64.. reciprocal_calculator, x_frac (x = 0.5 + x_frac/2**17) -> 1/x
+    80.. sqrt_calculator, x_frac (x = 0.5 + x_frac/2**17) -> sqrt(x)
     base +0 input   +1 write -> one request   +2 result               RW/WO/RO
          +3 latency, request at the input to ready, clock edges     RO
          +4 write N -> sweep N inputs from +5, one per clock (0 = 65536) WO
@@ -181,10 +182,25 @@ def reciprocal_model(x_frac):
     return wrap(RECIP_POINT[index] + wrap((RECIP_SLOPE[index] * fraction) >> 8, 16), 16) & 0xFFFF
 
 
+# lut_sqrt_pkg : 256 entries of sqrt(x) over 0.5 <= x < 1, radix 15
+SQRT_ENTRIES = 256
+SQRT_SCALE = 2.0**15 - 1.0
+sqrt_at = lambda i: math.sqrt(0.5 * (1.0 + i / SQRT_ENTRIES))
+SQRT_POINT = [vhdl_round(sqrt_at(i) * SQRT_SCALE) for i in range(SQRT_ENTRIES)]
+SQRT_SLOPE = [vhdl_round((sqrt_at(i + 1) - sqrt_at(i)) * SQRT_SCALE) for i in range(SQRT_ENTRIES)]
+
+
+def sqrt_model(x_frac):
+    """bit exact lut_sqrt_pkg.get_sqrt_from_lut"""
+    index, fraction = x_frac >> 8, x_frac & 0xFF
+    return wrap(SQRT_POINT[index] + wrap((SQRT_SLOPE[index] * fraction) >> 8, 16), 16) & 0xFFFF
+
+
 # base address, model, input edge cases
 CALCULATORS = {
     "sine_calculator": (48, sine_model, [0, 1, 63, 64, 0x3FFF, 0x4000, 0x4001, 0x7FFF, 0x8000, 0xBFFF, 0xC000, 0xFFFF]),
     "reciprocal_calculator": (64, reciprocal_model, [0, 1, 0xFF, 0x100, 0x7FFF, 0x8000, 0xFEFF, 0xFF00, 0xFFFF]),
+    "sqrt_calculator": (80, sqrt_model, [0, 1, 0xFF, 0x100, 0x7FFF, 0x8000, 0xFEFF, 0xFF00, 0xFFFF]),
 }
 
 

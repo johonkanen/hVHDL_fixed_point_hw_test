@@ -33,6 +33,8 @@ set VHDL_SOURCES [list \
     "$FIXED_DIR/sine_calculator/sine_calculator.vhd" \
     "$FIXED_DIR/lut_interpolation/lut_reciprocal_pkg.vhd" \
     "$FIXED_DIR/reciprocal_calculator/reciprocal_calculator.vhd" \
+    "$FIXED_DIR/lut_interpolation/lut_sqrt_pkg.vhd" \
+    "$FIXED_DIR/sqrt_calculator/sqrt_calculator.vhd" \
     "$SOURCE_DIR/git_hash_pkg.vhd" \
     "$SOURCE_DIR/lut_sweep.vhd" \
     "$SOURCE_DIR/uart_test_core.vhd" \

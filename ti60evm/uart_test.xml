@@ -20,6 +20,8 @@
         <efx:design_file name="../source/hVHDL_fixed_point/sine_calculator/sine_calculator.vhd" version="default" library="default" />
         <efx:design_file name="../source/hVHDL_fixed_point/lut_interpolation/lut_reciprocal_pkg.vhd" version="default" library="default" />
         <efx:design_file name="../source/hVHDL_fixed_point/reciprocal_calculator/reciprocal_calculator.vhd" version="default" library="default" />
+        <efx:design_file name="../source/hVHDL_fixed_point/lut_interpolation/lut_sqrt_pkg.vhd" version="default" library="default" />
+        <efx:design_file name="../source/hVHDL_fixed_point/sqrt_calculator/sqrt_calculator.vhd" version="default" library="default" />
         <efx:design_file name="../source/git_hash_pkg.vhd" version="default" library="default" />
         <efx:design_file name="../source/lut_sweep.vhd" version="default" library="default" />
         <efx:design_file name="../source/uart_test_core.vhd" version="default" library="default" />
