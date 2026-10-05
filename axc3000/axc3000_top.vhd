@@ -50,7 +50,10 @@ begin
         g_clock_divider       => 25
         ,g_board_id           => 2
         ,g_clock_frequency_hz => 120_000_000
-        ,g_ram_output_register => false
+        -- the m20k needs its output register in front of the dsp at 120 MHz
+        -- (-0.41 ns without both registers), the dsp requests go unregistered
+        ,g_ram_output_register => true
+        ,g_dsp_request_register => false
     )
     port map (
         clock      => core_clock

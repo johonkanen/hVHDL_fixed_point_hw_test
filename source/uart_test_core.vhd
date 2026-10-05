@@ -33,6 +33,7 @@
 --   44 : g_dsp_word_length                                      RO
 --   45 : 1 when g_dsp_pre_add_register is set (latency 3)       RO
 --   46 : 1 when g_ram_output_register is set                    RO
+--   47 : 1 when g_dsp_request_register is set                   RO
 --
 -- sine_calculator, reciprocal_calculator and sqrt_calculator, each with its own fixed_dsp
 -- (same width and pre-add option), tested through lut_sweep :
@@ -79,6 +80,9 @@ entity uart_test_core is
         -- dual_port_ram's output register in the lookup tables, off takes a
         -- clock off every calculator, the divider and the square root
         ;g_ram_output_register  : boolean := true
+        -- the register on the requests to the calculators', the divider's
+        -- and the square root's fixed_dsps, off takes a clock off each
+        ;g_dsp_request_register : boolean := true
     );
     port (
         clock      : in std_logic
@@ -262,6 +266,7 @@ begin
             connect_read_only_data_to_address(bus_from_communications, bus_from_dsp, 44, std_logic_vector(to_unsigned(dsp_n, 32)));
             connect_read_only_data_to_address(bus_from_communications, bus_from_dsp, 45, std_logic_vector(to_unsigned(boolean'pos(g_dsp_pre_add_register), 32)));
             connect_read_only_data_to_address(bus_from_communications, bus_from_dsp, 46, std_logic_vector(to_unsigned(boolean'pos(g_ram_output_register), 32)));
+            connect_read_only_data_to_address(bus_from_communications, bus_from_dsp, 47, std_logic_vector(to_unsigned(boolean'pos(g_dsp_request_register), 32)));
 
             ------------------------------
             init_fixed_dsp(dsp_in);
@@ -357,7 +362,9 @@ begin
     sine_in <= (angle => sine_request_value, request_with_1 => sine_request);
 
     u_sine_calculator : entity work.sine_calculator
-    generic map (g_ram_output_register => g_ram_output_register)
+    generic map (
+        g_ram_output_register   => g_ram_output_register
+        ,g_dsp_request_register => g_dsp_request_register)
     port map (
         clock                => clock
         ,sine_calculator_in  => sine_in
@@ -391,7 +398,9 @@ begin
     reciprocal_in <= (x_frac => reciprocal_request_value, request_with_1 => reciprocal_request);
 
     u_reciprocal_calculator : entity work.reciprocal_calculator
-    generic map (g_ram_output_register => g_ram_output_register)
+    generic map (
+        g_ram_output_register   => g_ram_output_register
+        ,g_dsp_request_register => g_dsp_request_register)
     port map (
         clock                      => clock
         ,reciprocal_calculator_in  => reciprocal_in
@@ -425,7 +434,9 @@ begin
     sqrt_in <= (x_frac => sqrt_request_value, request_with_1 => sqrt_request);
 
     u_sqrt_calculator : entity work.sqrt_calculator
-    generic map (g_ram_output_register => g_ram_output_register)
+    generic map (
+        g_ram_output_register   => g_ram_output_register
+        ,g_dsp_request_register => g_dsp_request_register)
     port map (
         clock                => clock
         ,sqrt_calculator_in  => sqrt_in
@@ -449,6 +460,7 @@ begin
         ,g_quotient_radix   => 16
         ,g_pre_add_register => g_dsp_pre_add_register
         ,g_ram_output_register => g_ram_output_register
+        ,g_dsp_request_register => g_dsp_request_register
     )
     port map (
         clock    => clock
@@ -464,6 +476,7 @@ begin
         ,g_radix            => 16
         ,g_pre_add_register => g_dsp_pre_add_register
         ,g_ram_output_register => g_ram_output_register
+        ,g_dsp_request_register => g_dsp_request_register
     )
     port map (
         clock    => clock

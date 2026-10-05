@@ -40,6 +40,7 @@ entity divider_sweep is
         ;g_quotient_radix   : natural
         ;g_pre_add_register : boolean
         ;g_ram_output_register : boolean := true
+        ;g_dsp_request_register : boolean := true
     );
     port (
         clock    : in std_logic
@@ -192,6 +193,7 @@ begin
         g_quotient_radix    => g_quotient_radix
         ,g_pre_add_register => g_pre_add_register
         ,g_ram_output_register => g_ram_output_register
+        ,g_dsp_request_register => g_dsp_request_register
     )
     port map (
         clock            => clock

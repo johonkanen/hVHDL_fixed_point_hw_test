@@ -54,5 +54,7 @@ core_tb.add_config(name="dsp", generics=dict(pre_add_register=False))
 core_tb.add_config(name="dsp_pre_add_register", generics=dict(pre_add_register=True))
 core_tb.add_config(name="no_ram_output_register", generics=dict(ram_output_register=False))
 core_tb.add_config(name="dsp_pre_add_register_no_ram_output_register", generics=dict(pre_add_register=True, ram_output_register=False))
+core_tb.add_config(name="no_registers", generics=dict(ram_output_register=False, dsp_request_register=False))
+core_tb.add_config(name="dsp_pre_add_register_no_registers", generics=dict(pre_add_register=True, ram_output_register=False, dsp_request_register=False))
 
 VU.main()

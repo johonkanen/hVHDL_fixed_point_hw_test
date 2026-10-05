@@ -36,6 +36,7 @@ Register map (source/uart_test_core.vhd) :
     44 dsp word length n                                         RO
     45 1 when the pre-adder is registered (latency 3)             RO
     46 1 when the lookup table rams have their output register     RO
+    47 1 when the dsp requests are registered                      RO
 
     lut calculators through lut_sweep, 16 bit input, 16 bit result
     48.. sine_calculator, angle (fraction of a turn) -> signed sine
@@ -503,7 +504,7 @@ def run_lut_calculator(uart, name, base, model, edges, rounds, r):
             ", ".join(f"{x} -> {y} expected {e}" for x, y, e in wrong[:4]))
 
     latency = uart.read(base + 3)
-    expected_latency = 5 + uart.read(45) + uart.read(46)
+    expected_latency = 4 + uart.read(45) + uart.read(46) + uart.read(47)
     r.check(f"pipeline latency {expected_latency} clock edges", latency == expected_latency, f"read {latency}")
 
     sweeps = [(0, 65536, 0, "all 65536 inputs, back to back"), (0, 65536, 1, "all 65536 inputs, irregular gaps")]
@@ -559,7 +560,7 @@ def run_lut_divider(uart, rounds, r):
     # normalise 2 + reciprocal_calculator 4 + dsp + multiply 1 + dsp +
     # shift 2, both dsps one longer with the pre-adder register
     latency = uart.read(DIVIDER_BASE + 5)
-    expected_latency = 12 + 2 * uart.read(45) + uart.read(46)
+    expected_latency = 10 + 2 * uart.read(45) + uart.read(46) + 2 * uart.read(47)
     r.check(f"pipeline latency {expected_latency} clock edges", latency == expected_latency, f"read {latency}")
 
     sweeps = [(0, 100000, -3000, 6000, "denominators -3000 .. 2999"),
@@ -621,7 +622,7 @@ def run_full_range_sqrt(uart, rounds, r):
     # normalise 2 + sqrt_calculator 4 + dsp + multiply 1 + dsp + shift 2,
     # both dsps one longer with the pre-adder register
     latency = uart.read(ROOT_BASE + 3)
-    expected_latency = 12 + 2 * uart.read(45) + uart.read(46)
+    expected_latency = 10 + 2 * uart.read(45) + uart.read(46) + 2 * uart.read(47)
     r.check(f"pipeline latency {expected_latency} clock edges", latency == expected_latency, f"read {latency}")
 
     sweeps = [(0, 0, 65536, "radicands 0 .. 65535"),

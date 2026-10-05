@@ -35,6 +35,7 @@ entity sqrt_sweep is
         ;g_radix            : natural
         ;g_pre_add_register : boolean
         ;g_ram_output_register : boolean := true
+        ;g_dsp_request_register : boolean := true
     );
     port (
         clock    : in std_logic
@@ -170,6 +171,7 @@ begin
         g_radix             => g_radix
         ,g_pre_add_register => g_pre_add_register
         ,g_ram_output_register => g_ram_output_register
+        ,g_dsp_request_register => g_dsp_request_register
     )
     port map (
         clock                => clock
