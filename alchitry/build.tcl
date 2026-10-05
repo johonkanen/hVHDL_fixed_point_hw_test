@@ -31,7 +31,10 @@ set VHDL_SOURCES [list \
     "$FIXED_DIR/submodules/hVHDL_memory_library/vhdl2008/arch_rtl_dp_ram_w_configurable_records.vhd" \
     "$FIXED_DIR/lut_interpolation/lut_sine_pkg.vhd" \
     "$FIXED_DIR/sine_calculator/sine_calculator.vhd" \
+    "$FIXED_DIR/lut_interpolation/lut_reciprocal_pkg.vhd" \
+    "$FIXED_DIR/reciprocal_calculator/reciprocal_calculator.vhd" \
     "$SOURCE_DIR/git_hash_pkg.vhd" \
+    "$SOURCE_DIR/lut_sweep.vhd" \
     "$SOURCE_DIR/uart_test_core.vhd" \
     "$BOARD_DIR/main_clocks.vhd" \
     "$BOARD_DIR/alchitry_au_top.vhd" \

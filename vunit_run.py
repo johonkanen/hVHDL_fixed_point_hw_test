@@ -34,8 +34,11 @@ lib.add_source_files(MEMORY / "dp_ram_w_configurable_recrods.vhd")
 lib.add_source_files(MEMORY / "arch_sim_dp_ram_w_configurable_records.vhd")
 lib.add_source_files(FIXED / "lut_interpolation/lut_sine_pkg.vhd")
 lib.add_source_files(FIXED / "sine_calculator/sine_calculator.vhd")
+lib.add_source_files(FIXED / "lut_interpolation/lut_reciprocal_pkg.vhd")
+lib.add_source_files(FIXED / "reciprocal_calculator/reciprocal_calculator.vhd")
 
 lib.add_source_files(SOURCE / "git_hash_pkg.vhd")
+lib.add_source_files(SOURCE / "lut_sweep.vhd")
 lib.add_source_files(SOURCE / "uart_test_core.vhd")
 
 lib.add_source_files(ROOT / "testbench/uart_test_core_tb.vhd")

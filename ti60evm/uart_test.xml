@@ -18,7 +18,10 @@
         <efx:design_file name="../source/hVHDL_fixed_point/submodules/hVHDL_memory_library/vhdl2008/arch_rtl_dp_ram_w_configurable_records.vhd" version="default" library="default" />
         <efx:design_file name="../source/hVHDL_fixed_point/lut_interpolation/lut_sine_pkg.vhd" version="default" library="default" />
         <efx:design_file name="../source/hVHDL_fixed_point/sine_calculator/sine_calculator.vhd" version="default" library="default" />
+        <efx:design_file name="../source/hVHDL_fixed_point/lut_interpolation/lut_reciprocal_pkg.vhd" version="default" library="default" />
+        <efx:design_file name="../source/hVHDL_fixed_point/reciprocal_calculator/reciprocal_calculator.vhd" version="default" library="default" />
         <efx:design_file name="../source/git_hash_pkg.vhd" version="default" library="default" />
+        <efx:design_file name="../source/lut_sweep.vhd" version="default" library="default" />
         <efx:design_file name="../source/uart_test_core.vhd" version="default" library="default" />
         <efx:design_file name="ti60evm_top.vhd" version="default" library="default" />
         <efx:top_vhdl_arch name="rtl" />

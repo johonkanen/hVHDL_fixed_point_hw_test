@@ -36,12 +36,14 @@ Register map (source/uart_test_core.vhd) :
     44 dsp word length n                                         RO
     45 1 when the pre-adder is registered (latency 3)             RO
 
-    sine_calculator, 16 bit angle (fraction of a turn), 16 bit signed sine
-    48 angle   49 write -> one request   50 sine (sign extended)    RW/WO/RO
-    51 latency, request at the input to ready, clock edges        RO
-    52 write N -> sweep N angles from 53, one per clock (0 = 65536) WO
-    53 sweep start   54 sum of sines s1   55 sum of s1 s2            RW/RO/RO
-    56 ready pulses of the last command   57 sweep mode, 1 = gaps  RO/RW
+    lut calculators through lut_sweep, 16 bit input, 16 bit result
+    48.. sine_calculator, angle (fraction of a turn) -> signed sine
+    64.. reciprocal_calculator, x_frac (x = 0.5 + x_frac/2**17) -> 1/x
+    base +0 input   +1 write -> one request   +2 result               RW/WO/RO
+         +3 latency, request at the input to ready, clock edges     RO
+         +4 write N -> sweep N inputs from +5, one per clock (0 = 65536) WO
+         +5 sweep start   +6 sum of results s1   +7 sum of s1 s2    RW/RO/RO
+         +8 ready pulses of the last command   +9 sweep mode, 1 = gaps RO/RW
 
 Exit status 0 = all passed.
 """
@@ -165,10 +167,31 @@ def sine_model(angle):
     return wrap(-value, 16) if angle & 0x8000 else value
 
 
-def sweep_sums(start, count):
+# lut_reciprocal_pkg : 256 entries of 1/x over 0.5 <= x < 1, radix 14
+RECIP_ENTRIES = 256
+RECIP_SCALE = 2.0**14 - 1.0
+recip_at = lambda i: 1.0 / (0.5 * (1.0 + i / RECIP_ENTRIES))
+RECIP_POINT = [vhdl_round(recip_at(i) * RECIP_SCALE) for i in range(RECIP_ENTRIES)]
+RECIP_SLOPE = [vhdl_round((recip_at(i + 1) - recip_at(i)) * RECIP_SCALE) for i in range(RECIP_ENTRIES)]
+
+
+def reciprocal_model(x_frac):
+    """bit exact lut_reciprocal_pkg.get_reciprocal_from_lut"""
+    index, fraction = x_frac >> 8, x_frac & 0xFF
+    return wrap(RECIP_POINT[index] + wrap((RECIP_SLOPE[index] * fraction) >> 8, 16), 16) & 0xFFFF
+
+
+# base address, model, input edge cases
+CALCULATORS = {
+    "sine_calculator": (48, sine_model, [0, 1, 63, 64, 0x3FFF, 0x4000, 0x4001, 0x7FFF, 0x8000, 0xBFFF, 0xC000, 0xFFFF]),
+    "reciprocal_calculator": (64, reciprocal_model, [0, 1, 0xFF, 0x100, 0x7FFF, 0x8000, 0xFEFF, 0xFF00, 0xFFFF]),
+}
+
+
+def sweep_sums(model, start, count):
     s1 = s2 = 0
     for i in range(count):
-        s1 = (s1 + sine_model((start + i) & 0xFFFF)) & 0xFFFFFFFF
+        s1 = (s1 + model((start + i) & 0xFFFF)) & 0xFFFFFFFF
         s2 = (s2 + s1) & 0xFFFFFFFF
     return s1, s2
 
@@ -245,7 +268,8 @@ def run(uart, board, rounds, r):
             f"{errors} wrong, {rounds / elapsed:.0f} round trips/s")
 
     run_fixed_dsp(uart, rounds, r)
-    run_sine_calculator(uart, rounds, r)
+    for name, (base, model, edges) in CALCULATORS.items():
+        run_lut_calculator(uart, name, base, model, edges, rounds, r)
 
     uart.uart.reset_input_buffer()
     time.sleep(0.05)
@@ -328,60 +352,58 @@ def run_fixed_dsp(uart, rounds, r):
     r.check(f"{cases} random requests, all flag combinations, bursts up to 300", failures == 0, f"{failures} wrong")
 
 
-def sine_request(uart, angle):
-    uart.write(48, angle)
-    uart.write(49, 1)
-    return wrap(uart.read(50), 32)
+def lut_request(uart, base, value):
+    uart.write(base + 0, value)
+    uart.write(base + 1, 1)
+    return wrap(uart.read(base + 2), 32)
 
 
-def sine_sweep(uart, start, count, mode):
+def lut_sweep(uart, base, start, count, mode):
     """returns the sweep sums (s1, s2) and the ready pulses"""
-    uart.write(53, start)
-    uart.write(57, mode)
-    uart.write(52, count & 0xFFFF)
+    uart.write(base + 5, start)
+    uart.write(base + 9, mode)
+    uart.write(base + 4, count & 0xFFFF)
     for _ in range(100):
-        readies = uart.read(56)
+        readies = uart.read(base + 8)
         if readies >= count:
             break
-    return (uart.read(54), uart.read(55)), readies
+    return (uart.read(base + 6), uart.read(base + 7)), readies
 
 
-def first_wrong_angle(uart, start, count, mode):
-    """bisect with sweeps for the first angle whose sine differs"""
+def first_wrong_input(uart, base, model, start, count, mode):
+    """bisect with sweeps for the first input whose result differs"""
     while count > 1:
         half = count // 2
-        sums, _ = sine_sweep(uart, start, half, mode)
-        if sums == sweep_sums(start, half):
+        sums, _ = lut_sweep(uart, base, start, half, mode)
+        if sums == sweep_sums(model, start, half):
             start, count = (start + half) & 0xFFFF, count - half
         else:
             count = half
     return start
 
 
-def run_sine_calculator(uart, rounds, r):
-    print("sine_calculator")
-    angles = [0, 1, 63, 64, 0x3FFF, 0x4000, 0x4001, 0x7FFF, 0x8000, 0xBFFF, 0xC000, 0xFFFF]
-    angles += [r.random.getrandbits(16) for _ in range(max(16, rounds // 8))]
-    wrong = [(a, s, sine_model(a)) for a in angles if (s := sine_request(uart, a)) != sine_model(a)]
-    r.check(f"{len(angles)} single angles incl. quadrant edges", not wrong,
-            ", ".join(f"angle {a} -> {s} expected {e}" for a, s, e in wrong[:4]))
+def run_lut_calculator(uart, name, base, model, edges, rounds, r):
+    print(name)
+    inputs = edges + [r.random.getrandbits(16) for _ in range(max(16, rounds // 8))]
+    wrong = [(x, y, model(x)) for x in inputs if (y := lut_request(uart, base, x)) != model(x)]
+    r.check(f"{len(inputs)} single inputs incl. edge cases", not wrong,
+            ", ".join(f"{x} -> {y} expected {e}" for x, y, e in wrong[:4]))
 
-    latency = uart.read(51)
+    latency = uart.read(base + 3)
     expected_latency = 6 + uart.read(45)
     r.check(f"pipeline latency {expected_latency} clock edges", latency == expected_latency, f"read {latency}")
 
-    sweeps = [(0, 65536, 0, "full turn, back to back"), (0, 65536, 1, "full turn, irregular gaps")]
+    sweeps = [(0, 65536, 0, "all 65536 inputs, back to back"), (0, 65536, 1, "all 65536 inputs, irregular gaps")]
     for _ in range(4):
         sweeps.append((r.random.getrandbits(16), r.random.randint(1, 5000), r.random.getrandbits(1), "random range"))
-    for start, count, mode, name in sweeps:
-        sums, readies = sine_sweep(uart, start, count, mode)
-        expected = sweep_sums(start, count)
-        ok = sums == expected and readies == count
-        detail = f"{count} angles from {start}, {readies} ready"
+    for start, count, mode, sweep_name in sweeps:
+        sums, readies = lut_sweep(uart, base, start, count, mode)
+        ok = sums == sweep_sums(model, start, count) and readies == count
+        detail = f"{count} inputs from {start}, {readies} ready"
         if not ok:
-            angle = first_wrong_angle(uart, start, count, mode)
-            detail += f", first wrong angle {angle}: {sine_request(uart, angle)} expected {sine_model(angle)}"
-        r.check(f"sweep {name}", ok, detail)
+            x = first_wrong_input(uart, base, model, start, count, mode)
+            detail += f", first wrong input {x}: {lut_request(uart, base, x)} expected {model(x)}"
+        r.check(f"sweep {sweep_name}", ok, detail)
 
 
 def main():

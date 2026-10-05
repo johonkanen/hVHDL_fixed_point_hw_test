@@ -6,6 +6,7 @@ library vunit_lib;
 context vunit_lib.vunit_context;
 
     use work.lut_sine_pkg.all;
+    use work.lut_reciprocal_pkg.all;
 
 -- talks to uart_test_core through its uart pins with a behavioural 8N1
 -- uart, the same byte frames test_uart.py sends :
@@ -106,27 +107,49 @@ begin
 
         variable data1, data2 : std_logic_vector(31 downto 0);
 
-        -- expected sweep sums from lut_sine_pkg's reference function
-        procedure check_sweep (start : natural; count : natural; mode : natural) is
+        constant sine_base       : natural := 48;
+        constant reciprocal_base : natural := 64;
+        type natural_array is array (natural range <>) of natural;
+        constant calculator_bases : natural_array := (sine_base, reciprocal_base);
+
+        -- the reference functions of lut_sine_pkg and lut_reciprocal_pkg,
+        -- extended to 32 bits as lut_sweep reports them
+        impure function expected_result (base : natural; input : unsigned(15 downto 0)) return unsigned is
+        begin
+            if base = sine_base then
+                return unsigned(resize(get_sine_from_quarter_wave_lut(input), 32));
+            else
+                return resize(get_reciprocal_from_lut(input), 32);
+            end if;
+        end expected_result;
+
+        procedure check_single (base : natural; input : natural) is
+        begin
+            write_register(base + 0, input);
+            write_register(base + 1, 1);
+            check_register(base + 2, std_logic_vector(expected_result(base, to_unsigned(input mod 2**16, 16))));
+        end check_single;
+
+        procedure check_sweep (base : natural; start : natural; count : natural; mode : natural) is
             variable sum1, sum2 : unsigned(31 downto 0) := (others => '0');
-            variable angle      : unsigned(15 downto 0) := to_unsigned(start, 16);
+            variable input      : unsigned(15 downto 0) := to_unsigned(start, 16);
             variable readies    : std_logic_vector(31 downto 0);
         begin
             for i in 1 to count loop
-                sum1  := sum1 + unsigned(resize(get_sine_from_quarter_wave_lut(angle), 32));
+                sum1  := sum1 + expected_result(base, input);
                 sum2  := sum2 + sum1;
-                angle := angle + 1;
+                input := input + 1;
             end loop;
-            write_register(53, start);
-            write_register(57, mode);
-            write_register(52, count mod 2**16);
+            write_register(base + 5, start);
+            write_register(base + 9, mode);
+            write_register(base + 4, count mod 2**16);
             loop
-                read_register(56, readies);
+                read_register(base + 8, readies);
                 exit when to_integer(unsigned(readies)) >= count;
             end loop;
-            check_register(54, std_logic_vector(sum1));
-            check_register(55, std_logic_vector(sum2));
-            check_register(56, count);
+            check_register(base + 6, std_logic_vector(sum1));
+            check_register(base + 7, std_logic_vector(sum2));
+            check_register(base + 8, count);
         end check_sweep;
 
     begin
@@ -201,25 +224,24 @@ begin
         check_register(40, 0);
         check_register(42, 1);
 
-        -- sine_calculator, single angles against lut_sine_pkg
-        for angle in 0 to 15 loop
-            write_register(48, angle * 4099);
-            write_register(49, 1);
-            check_register(50, to_integer(get_sine_from_quarter_wave_lut(to_unsigned(angle * 4099 mod 2**16, 16))));
-        end loop;
         -- ram request register 1 + ram 2 + dsp request register 1 +
         -- fixed_dsp 2 or 3
-        check_register(51, 6 + boolean'pos(pre_add_register));
+        for b in calculator_bases'range loop
+            for i in 0 to 15 loop
+                check_single(calculator_bases(b), i * 4099);
+            end loop;
+            check_register(calculator_bases(b) + 3, 6 + boolean'pos(pre_add_register));
 
-        check_sweep(start => 0, count => 2**16, mode => 0);
-        check_sweep(start => 0, count => 2**16, mode => 1);
-        check_sweep(start => 65000, count => 1000, mode => 0);
+            check_sweep(calculator_bases(b), start => 0, count => 2**16, mode => 0);
+            check_sweep(calculator_bases(b), start => 0, count => 2**16, mode => 1);
+            check_sweep(calculator_bases(b), start => 65000, count => 1000, mode => 0);
+        end loop;
 
         test_runner_cleanup(runner);
         wait;
     end process stimulus;
 
-    test_runner_watchdog(runner, 100 ms);
+    test_runner_watchdog(runner, 200 ms);
 ------------------------------------------------------------------------
     -- 8N1 receiver, runs alongside the sender since the fpga can start
     -- its response while the last stop bit of a request is still going out

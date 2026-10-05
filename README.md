@@ -93,25 +93,32 @@ reference 0.
 | 44     | dsp word length                                                  | RO |
 | 45     | 1 when the pre-adder is registered (`g_dsp_pre_add_register`)    | RO |
 
-`sine_calculator` with its own `fixed_dsp` (same width and pre-adder option),
-16-bit angle as a fraction of a full turn, 16-bit signed sine:
+`sine_calculator` and `reciprocal_calculator`, each with its own `fixed_dsp`
+(same width and pre-adder option), tested through `source/lut_sweep.vhd`.
+Both take a 16-bit input and give a 16-bit result:
 
-| addr   | contents                                                         |    |
-|-------:|------------------------------------------------------------------|----|
-| 48     | angle                                                            | RW |
-| 49     | write → one sine request for the angle in 48                     | WO |
-| 50     | last sine result, sign extended                                  | RO |
-| 51     | clock edges from the request at the input to ready (6, or 7 with the pre-adder registered) | RO |
-| 52     | write N → sweep N angles from 53 upwards, one per clock (0 = 65536) | WO |
-| 53     | sweep start angle                                                | RW |
-| 54, 55 | sweep checksums: s1 += sine, s2 += s1                            | RO |
-| 56     | ready pulses of the last command                                 | RO |
-| 57     | sweep mode: 0 back to back, 1 irregular gaps                     | RW |
+| base | calculator | input | result |
+|-----:|------------|-------|--------|
+| 48   | `sine_calculator` | angle, fraction of a full turn | signed sine |
+| 64   | `reciprocal_calculator` | `x_frac`, x = 0.5 + x_frac / 2¹⁷ | unsigned 1/x, radix 14 |
 
-`test_uart.py` checks single angles against a bit-exact model of
-`lut_sine_pkg.get_sine_from_quarter_wave_lut`, and full-turn and random-range
-sweeps (back to back and gapped) against the model's checksums. On a checksum
-mismatch it bisects with smaller sweeps and reports the first wrong angle.
+| addr     | contents                                                         |    |
+|---------:|------------------------------------------------------------------|----|
+| base + 0 | input                                                            | RW |
+| base + 1 | write → one request for the input in base + 0                    | WO |
+| base + 2 | last result, sign extended (sine) or zero extended (1/x)         | RO |
+| base + 3 | clock edges from the request at the input to ready (6, or 7 with the pre-adder registered) | RO |
+| base + 4 | write N → sweep N inputs from base + 5 upwards, one per clock (0 = 65536) | WO |
+| base + 5 | sweep start input                                                | RW |
+| base + 6, 7 | sweep checksums: s1 += result, s2 += s1                       | RO |
+| base + 8 | ready pulses of the last command                                 | RO |
+| base + 9 | sweep mode: 0 back to back, 1 irregular gaps                     | RW |
+
+`test_uart.py` checks single inputs against bit-exact models of
+`get_sine_from_quarter_wave_lut` and `get_reciprocal_from_lut`, and all-input
+and random-range sweeps (back to back and gapped) against the models'
+checksums. On a checksum mismatch it bisects with smaller sweeps and reports
+the first wrong input.
 
 `fixed_dsp(rtl)` recomputes its result register on every clock and the core
 drives `init_fixed_dsp` while idle, so an accumulate only carries over

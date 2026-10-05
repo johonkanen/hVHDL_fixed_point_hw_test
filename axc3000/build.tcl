@@ -55,7 +55,10 @@ set_global_assignment -name VHDL_FILE $fixed_dir/submodules/hVHDL_memory_library
 set_global_assignment -name VHDL_FILE $fixed_dir/submodules/hVHDL_memory_library/vhdl2008/arch_rtl_dp_ram_w_configurable_records.vhd
 set_global_assignment -name VHDL_FILE $fixed_dir/lut_interpolation/lut_sine_pkg.vhd
 set_global_assignment -name VHDL_FILE $fixed_dir/sine_calculator/sine_calculator.vhd
+set_global_assignment -name VHDL_FILE $fixed_dir/lut_interpolation/lut_reciprocal_pkg.vhd
+set_global_assignment -name VHDL_FILE $fixed_dir/reciprocal_calculator/reciprocal_calculator.vhd
 set_global_assignment -name VHDL_FILE $source_dir/git_hash_pkg.vhd
+set_global_assignment -name VHDL_FILE $source_dir/lut_sweep.vhd
 set_global_assignment -name VHDL_FILE $source_dir/uart_test_core.vhd
 set_global_assignment -name VHDL_FILE $this_file_path/axc3000_top.vhd
 
