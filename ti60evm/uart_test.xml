@@ -14,6 +14,10 @@
         <efx:design_file name="../source/fpga_interconnect_32_16_pkg.vhd" version="default" library="default" />
         <efx:design_file name="../source/hVHDL_fixed_point/fixed_dsp/fixed_dsp.vhd" version="default" library="default" />
         <efx:design_file name="../source/hVHDL_fixed_point/fixed_dsp/arch_rtl_fixed_dsp.vhd" version="default" library="default" />
+        <efx:design_file name="../source/hVHDL_fixed_point/submodules/hVHDL_memory_library/vhdl2008/dp_ram_w_configurable_recrods.vhd" version="default" library="default" />
+        <efx:design_file name="../source/hVHDL_fixed_point/submodules/hVHDL_memory_library/vhdl2008/arch_rtl_dp_ram_w_configurable_records.vhd" version="default" library="default" />
+        <efx:design_file name="../source/hVHDL_fixed_point/lut_interpolation/lut_sine_pkg.vhd" version="default" library="default" />
+        <efx:design_file name="../source/hVHDL_fixed_point/sine_calculator/sine_calculator.vhd" version="default" library="default" />
         <efx:design_file name="../source/git_hash_pkg.vhd" version="default" library="default" />
         <efx:design_file name="../source/uart_test_core.vhd" version="default" library="default" />
         <efx:design_file name="ti60evm_top.vhd" version="default" library="default" />

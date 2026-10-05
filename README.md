@@ -93,6 +93,26 @@ reference 0.
 | 44     | dsp word length                                                  | RO |
 | 45     | 1 when the pre-adder is registered (`g_dsp_pre_add_register`)    | RO |
 
+`sine_calculator` with its own `fixed_dsp` (same width and pre-adder option),
+16-bit angle as a fraction of a full turn, 16-bit signed sine:
+
+| addr   | contents                                                         |    |
+|-------:|------------------------------------------------------------------|----|
+| 48     | angle                                                            | RW |
+| 49     | write → one sine request for the angle in 48                     | WO |
+| 50     | last sine result, sign extended                                  | RO |
+| 51     | clock edges from the request at the input to ready (6, or 7 with the pre-adder registered) | RO |
+| 52     | write N → sweep N angles from 53 upwards, one per clock (0 = 65536) | WO |
+| 53     | sweep start angle                                                | RW |
+| 54, 55 | sweep checksums: s1 += sine, s2 += s1                            | RO |
+| 56     | ready pulses of the last command                                 | RO |
+| 57     | sweep mode: 0 back to back, 1 irregular gaps                     | RW |
+
+`test_uart.py` checks single angles against a bit-exact model of
+`lut_sine_pkg.get_sine_from_quarter_wave_lut`, and full-turn and random-range
+sweeps (back to back and gapped) against the model's checksums. On a checksum
+mismatch it bisects with smaller sweeps and reports the first wrong angle.
+
 `fixed_dsp(rtl)` recomputes its result register on every clock and the core
 drives `init_fixed_dsp` while idle, so an accumulate only carries over
 between the back-to-back requests of one burst (register 38).

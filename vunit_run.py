@@ -28,6 +28,13 @@ lib.add_source_files(SOURCE / "fpga_interconnect_32_16_pkg.vhd")
 lib.add_source_files(FIXED / "fixed_dsp/fixed_dsp.vhd")
 lib.add_source_files(FIXED / "fixed_dsp/arch_rtl_fixed_dsp.vhd")
 
+MEMORY = FIXED / "submodules/hVHDL_memory_library/vhdl2008"
+lib.add_source_files(MEMORY / "dp_ram_w_configurable_recrods.vhd")
+# the protected type simulation model, the builds use arch_rtl
+lib.add_source_files(MEMORY / "arch_sim_dp_ram_w_configurable_records.vhd")
+lib.add_source_files(FIXED / "lut_interpolation/lut_sine_pkg.vhd")
+lib.add_source_files(FIXED / "sine_calculator/sine_calculator.vhd")
+
 lib.add_source_files(SOURCE / "git_hash_pkg.vhd")
 lib.add_source_files(SOURCE / "uart_test_core.vhd")
 

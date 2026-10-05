@@ -33,6 +33,22 @@
 --   44 : g_dsp_word_length                                      RO
 --   45 : 1 when g_dsp_pre_add_register is set (latency 3)       RO
 --
+-- sine_calculator with its own fixed_dsp (same width and pre-add option),
+-- 16 bit angle = fraction of a full turn, 16 bit signed sine :
+--
+--   48 : angle                                                  RW
+--   49 : write -> one sine request for the angle in 48          WO
+--   50 : last sine result, sign extended                        RO
+--   51 : clock edges from the request at sine_calculator's
+--        input to its ready                                     RO
+--   52 : write N -> sweep N angles from 53 upwards, one per
+--        clock, (0 is taken as 65536)                           WO
+--   53 : sweep start angle                                      RW
+--   54 : sweep sum of the sines, s1 += sine                     RO
+--   55 : sweep sum of the sums, s2 += s1                        RO
+--   56 : ready pulses since the last command                    RO
+--   57 : sweep mode, 0 back to back, 1 irregular gaps           RW
+--
 -- fixed_dsp recomputes its result register on every clock, the core drives
 -- init_fixed_dsp while idle so an accumulate only carries across back to
 -- back requests of one burst
@@ -66,6 +82,7 @@ architecture rtl of uart_test_core is
     use work.fpga_interconnect_pkg.all;
     use work.fixed_dsp_pkg.all;
     use work.git_hash_pkg.all;
+    use work.sine_calculator_pkg.all;
 
     signal reset_meta   : std_logic := '1';
     signal system_reset : std_logic := '1';
@@ -74,6 +91,7 @@ architecture rtl of uart_test_core is
     signal bus_from_communications : fpga_interconnect_record := init_fpga_interconnect;
     signal bus_from_top            : fpga_interconnect_record := init_fpga_interconnect;
     signal bus_from_dsp            : fpga_interconnect_record := init_fpga_interconnect;
+    signal bus_from_sine           : fpga_interconnect_record := init_fpga_interconnect;
 
     signal loopback_register : std_logic_vector(31 downto 0) := (others => '0');
     signal read_counter      : unsigned(31 downto 0) := (others => '0');
@@ -114,6 +132,26 @@ architecture rtl of uart_test_core is
     signal latency_counter : unsigned(31 downto 0) := (others => '0');
     signal dsp_latency     : unsigned(31 downto 0) := (others => '0');
     signal ready_count     : unsigned(31 downto 0) := (others => '0');
+    ------------------------------------------------------------------
+    signal sine_in      : sine_calculator_in_record;
+    signal sine_out     : sine_calculator_out_record;
+    signal sine_dsp_in  : dsp_in_subtype;
+    signal sine_dsp_out : dsp_out_subtype;
+
+    signal sine_angle       : std_logic_vector(31 downto 0) := (others => '0');
+    signal sweep_start      : std_logic_vector(31 downto 0) := (others => '0');
+    signal sweep_mode       : std_logic_vector(31 downto 0) := (others => '0');
+    signal sine_result      : signed(15 downto 0) := (others => '0');
+    signal single_requested : boolean := false;
+    signal sweep_left       : natural range 0 to 2**16 := 0;
+    signal sweep_angle      : unsigned(15 downto 0) := (others => '0');
+    signal sweep_lfsr       : std_logic_vector(15 downto 0) := x"ace1";
+    signal sine_new_command : boolean := false;
+    signal sine_latency_counter : unsigned(31 downto 0) := (others => '0');
+    signal sine_latency     : unsigned(31 downto 0) := (others => '0');
+    signal sine_ready_count : unsigned(31 downto 0) := (others => '0');
+    signal sine_sum1        : unsigned(31 downto 0) := (others => '0');
+    signal sine_sum2        : unsigned(31 downto 0) := (others => '0');
     ------------------------------------------------------------------
 
     signal heartbeat_counter : natural range 0 to g_clock_frequency_hz/2-1 := 0;
@@ -174,7 +212,7 @@ begin
                 write_data_to_address(bus_from_top, 0, register_bank(bank_index));
             end if;
 
-            bus_to_communications <= bus_from_top and bus_from_dsp;
+            bus_to_communications <= bus_from_top and bus_from_dsp and bus_from_sine;
 
             if system_reset = '1' then
                 loopback_register     <= (others => '0');
@@ -279,6 +317,114 @@ begin
         clock          => clock
         ,fixed_dsp_in  => dsp_in
         ,fixed_dsp_out => dsp_out
+    );
+
+------------------------------------------------------------------------
+    sine_test : process (clock) is
+        variable issue : boolean;
+    begin
+        if rising_edge(clock) then
+            init_bus(bus_from_sine);
+
+            connect_data_to_address(bus_from_communications, bus_from_sine, 48, sine_angle);
+            connect_read_only_data_to_address(bus_from_communications, bus_from_sine, 50, std_logic_vector(resize(sine_result, 32)));
+            connect_read_only_data_to_address(bus_from_communications, bus_from_sine, 51, std_logic_vector(sine_latency));
+            connect_data_to_address(bus_from_communications, bus_from_sine, 53, sweep_start);
+            connect_read_only_data_to_address(bus_from_communications, bus_from_sine, 54, std_logic_vector(sine_sum1));
+            connect_read_only_data_to_address(bus_from_communications, bus_from_sine, 55, std_logic_vector(sine_sum2));
+            connect_read_only_data_to_address(bus_from_communications, bus_from_sine, 56, std_logic_vector(sine_ready_count));
+            connect_data_to_address(bus_from_communications, bus_from_sine, 57, sweep_mode);
+
+            ------------------------------
+            -- 16 bit maximal length lfsr, its low bit gates the requests
+            -- of a gapped sweep
+            sweep_lfsr <= sweep_lfsr(14 downto 0) & (sweep_lfsr(15) xor sweep_lfsr(13) xor sweep_lfsr(12) xor sweep_lfsr(10));
+
+            init_sine_calculator(sine_in);
+
+            issue := single_requested
+                or (sweep_left > 0 and (sweep_mode(0) = '0' or sweep_lfsr(0) = '1'));
+
+            -- counters and sums restart on the first request of a command,
+            -- so the latency is counted from the request at the input
+            if sine_new_command and issue then
+                sine_new_command     <= false;
+                sine_latency_counter <= (others => '0');
+                sine_ready_count     <= (others => '0');
+                sine_sum1            <= (others => '0');
+                sine_sum2            <= (others => '0');
+            else
+                sine_latency_counter <= sine_latency_counter + 1;
+            end if;
+
+            if single_requested then
+                single_requested <= false;
+                request_sine(sine_in, unsigned(sine_angle(15 downto 0)));
+            elsif issue then
+                sweep_left  <= sweep_left - 1;
+                sweep_angle <= sweep_angle + 1;
+                request_sine(sine_in, sweep_angle);
+            end if;
+
+            ------------------------------
+            if sine_out.ready_with_1 = '1' then
+                sine_result <= sine_out.sine;
+                if sine_new_command and issue then
+                    -- a stale ready can not overlap a new command, uart
+                    -- commands are microseconds apart
+                    null;
+                else
+                    sine_ready_count <= sine_ready_count + 1;
+                    sine_sum1 <= sine_sum1 + unsigned(resize(sine_out.sine, 32));
+                    sine_sum2 <= sine_sum2 + sine_sum1 + unsigned(resize(sine_out.sine, 32));
+                    if sine_ready_count = 0 then
+                        sine_latency <= sine_latency_counter;
+                    end if;
+                end if;
+            end if;
+
+            ------------------------------
+            if write_is_requested_to_address(bus_from_communications, 49) then
+                single_requested <= true;
+                sine_new_command <= true;
+            end if;
+
+            if write_is_requested_to_address(bus_from_communications, 52) then
+                if unsigned(get_slv_data(bus_from_communications)(15 downto 0)) = 0 then
+                    sweep_left <= 2**16;
+                else
+                    sweep_left <= to_integer(unsigned(get_slv_data(bus_from_communications)(15 downto 0)));
+                end if;
+                sweep_angle      <= unsigned(sweep_start(15 downto 0));
+                sine_new_command <= true;
+            end if;
+
+            if system_reset = '1' then
+                sine_angle       <= (others => '0');
+                sweep_start      <= (others => '0');
+                sweep_mode       <= (others => '0');
+                single_requested <= false;
+                sweep_left       <= 0;
+                sine_new_command <= false;
+            end if;
+        end if;
+    end process sine_test;
+
+    u_sine_calculator : entity work.sine_calculator
+    port map (
+        clock                => clock
+        ,sine_calculator_in  => sine_in
+        ,sine_calculator_out => sine_out
+        ,fixed_dsp_in        => sine_dsp_in
+        ,fixed_dsp_out       => sine_dsp_out
+    );
+
+    u_sine_dsp : entity work.fixed_dsp(rtl)
+    generic map (g_pre_add_register => g_dsp_pre_add_register)
+    port map (
+        clock          => clock
+        ,fixed_dsp_in  => sine_dsp_in
+        ,fixed_dsp_out => sine_dsp_out
     );
 
 ------------------------------------------------------------------------

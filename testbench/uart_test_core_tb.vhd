@@ -5,6 +5,8 @@ LIBRARY ieee  ;
 library vunit_lib;
 context vunit_lib.vunit_context;
 
+    use work.lut_sine_pkg.all;
+
 -- talks to uart_test_core through its uart pins with a behavioural 8N1
 -- uart, the same byte frames test_uart.py sends :
 --   read  : 0x02 addr[2]          -> 7 byte response, data in the last 4
@@ -29,7 +31,7 @@ architecture vunit_simulation of uart_test_core_tb is
 
     type byte_array is array (natural range <>) of std_logic_vector(7 downto 0);
 
-    -- every byte the fpga sends, in order
+    -- the bytes the fpga sends, a ring buffer indexed by received_count
     signal received_bytes : byte_array(0 to 1023);
     signal received_count : natural := 0;
 
@@ -80,7 +82,9 @@ begin
                 wait until received_count >= first + 7 for 200*bit_time;
             end if;
             check(received_count >= first + 7, "no response to read of register " & integer'image(address));
-            data := received_bytes(first+3) & received_bytes(first+4) & received_bytes(first+5) & received_bytes(first+6);
+            for i in 3 to 6 loop
+                data(8*(6-i)+7 downto 8*(6-i)) := received_bytes((first+i) mod received_bytes'length);
+            end loop;
         end read_register;
 
         procedure check_register (address : natural; expected : std_logic_vector(31 downto 0)) is
@@ -101,6 +105,29 @@ begin
         end check_register;
 
         variable data1, data2 : std_logic_vector(31 downto 0);
+
+        -- expected sweep sums from lut_sine_pkg's reference function
+        procedure check_sweep (start : natural; count : natural; mode : natural) is
+            variable sum1, sum2 : unsigned(31 downto 0) := (others => '0');
+            variable angle      : unsigned(15 downto 0) := to_unsigned(start, 16);
+            variable readies    : std_logic_vector(31 downto 0);
+        begin
+            for i in 1 to count loop
+                sum1  := sum1 + unsigned(resize(get_sine_from_quarter_wave_lut(angle), 32));
+                sum2  := sum2 + sum1;
+                angle := angle + 1;
+            end loop;
+            write_register(53, start);
+            write_register(57, mode);
+            write_register(52, count mod 2**16);
+            loop
+                read_register(56, readies);
+                exit when to_integer(unsigned(readies)) >= count;
+            end loop;
+            check_register(54, std_logic_vector(sum1));
+            check_register(55, std_logic_vector(sum2));
+            check_register(56, count);
+        end check_sweep;
 
     begin
         test_runner_setup(runner, runner_cfg);
@@ -174,11 +201,25 @@ begin
         check_register(40, 0);
         check_register(42, 1);
 
+        -- sine_calculator, single angles against lut_sine_pkg
+        for angle in 0 to 15 loop
+            write_register(48, angle * 4099);
+            write_register(49, 1);
+            check_register(50, to_integer(get_sine_from_quarter_wave_lut(to_unsigned(angle * 4099 mod 2**16, 16))));
+        end loop;
+        -- ram request register 1 + ram 2 + dsp request register 1 +
+        -- fixed_dsp 2 or 3
+        check_register(51, 6 + boolean'pos(pre_add_register));
+
+        check_sweep(start => 0, count => 2**16, mode => 0);
+        check_sweep(start => 0, count => 2**16, mode => 1);
+        check_sweep(start => 65000, count => 1000, mode => 0);
+
         test_runner_cleanup(runner);
         wait;
     end process stimulus;
 
-    test_runner_watchdog(runner, 50 ms);
+    test_runner_watchdog(runner, 100 ms);
 ------------------------------------------------------------------------
     -- 8N1 receiver, runs alongside the sender since the fpga can start
     -- its response while the last stop bit of a request is still going out
@@ -192,7 +233,7 @@ begin
             wait for bit_time;
         end loop;
         check(from_fpga = '1', "missing stop bit");
-        received_bytes(received_count) <= data;
+        received_bytes(received_count mod received_bytes'length) <= data;
         received_count <= received_count + 1;
     end process receiver;
 ------------------------------------------------------------------------

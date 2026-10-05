@@ -36,9 +36,17 @@ Register map (source/uart_test_core.vhd) :
     44 dsp word length n                                         RO
     45 1 when the pre-adder is registered (latency 3)             RO
 
+    sine_calculator, 16 bit angle (fraction of a turn), 16 bit signed sine
+    48 angle   49 write -> one request   50 sine (sign extended)    RW/WO/RO
+    51 latency, request at the input to ready, clock edges        RO
+    52 write N -> sweep N angles from 53, one per clock (0 = 65536) WO
+    53 sweep start   54 sum of sines s1   55 sum of s1 s2            RW/RO/RO
+    56 ready pulses of the last command   57 sweep mode, 1 = gaps  RO/RW
+
 Exit status 0 = all passed.
 """
 import argparse
+import math
 import random
 import sys
 import time
@@ -134,6 +142,37 @@ def fixed_dsp_model(a, d, b, c, control, n, requests=1):
     return p
 
 
+def vhdl_round(x):
+    """math_real round : halfway cases away from zero"""
+    return int(math.floor(abs(x) + 0.5)) * (1 if x >= 0 else -1)
+
+
+# lut_sine_pkg : quarter wave tables of 256 entries, 16 bit
+SINE_ENTRIES = 256
+SINE_SCALE = 2.0**15 - 1.0
+SINE_POINT = [vhdl_round(math.sin(math.pi / 2.0 * i / SINE_ENTRIES) * SINE_SCALE) for i in range(SINE_ENTRIES)]
+SINE_SLOPE = [vhdl_round((math.sin(math.pi / 2.0 * (i + 1) / SINE_ENTRIES)
+                          - math.sin(math.pi / 2.0 * i / SINE_ENTRIES)) * SINE_SCALE) for i in range(SINE_ENTRIES)]
+
+
+def sine_model(angle):
+    """bit exact lut_sine_pkg.get_sine_from_quarter_wave_lut"""
+    phase = angle & 0x3FFF
+    if angle & 0x4000:
+        phase = ~phase & 0x3FFF
+    index, fraction = phase >> 6, phase & 0x3F
+    value = wrap(SINE_POINT[index] + ((SINE_SLOPE[index] * fraction) >> 6), 16)
+    return wrap(-value, 16) if angle & 0x8000 else value
+
+
+def sweep_sums(start, count):
+    s1 = s2 = 0
+    for i in range(count):
+        s1 = (s1 + sine_model((start + i) & 0xFFFF)) & 0xFFFFFFFF
+        s2 = (s2 + s1) & 0xFFFFFFFF
+    return s1, s2
+
+
 class Results:
     def __init__(self):
         self.failed = 0
@@ -206,6 +245,7 @@ def run(uart, board, rounds, r):
             f"{errors} wrong, {rounds / elapsed:.0f} round trips/s")
 
     run_fixed_dsp(uart, rounds, r)
+    run_sine_calculator(uart, rounds, r)
 
     uart.uart.reset_input_buffer()
     time.sleep(0.05)
@@ -286,6 +326,62 @@ def run_fixed_dsp(uart, rounds, r):
         requests = rnd.choice([1, 1, 1, 2, 3, rnd.randint(1, 300)])
         failures += not check_case(None, operand(), operand(), operand(), wrap(rnd.getrandbits(2 * n), 2 * n), control, requests)
     r.check(f"{cases} random requests, all flag combinations, bursts up to 300", failures == 0, f"{failures} wrong")
+
+
+def sine_request(uart, angle):
+    uart.write(48, angle)
+    uart.write(49, 1)
+    return wrap(uart.read(50), 32)
+
+
+def sine_sweep(uart, start, count, mode):
+    """returns the sweep sums (s1, s2) and the ready pulses"""
+    uart.write(53, start)
+    uart.write(57, mode)
+    uart.write(52, count & 0xFFFF)
+    for _ in range(100):
+        readies = uart.read(56)
+        if readies >= count:
+            break
+    return (uart.read(54), uart.read(55)), readies
+
+
+def first_wrong_angle(uart, start, count, mode):
+    """bisect with sweeps for the first angle whose sine differs"""
+    while count > 1:
+        half = count // 2
+        sums, _ = sine_sweep(uart, start, half, mode)
+        if sums == sweep_sums(start, half):
+            start, count = (start + half) & 0xFFFF, count - half
+        else:
+            count = half
+    return start
+
+
+def run_sine_calculator(uart, rounds, r):
+    print("sine_calculator")
+    angles = [0, 1, 63, 64, 0x3FFF, 0x4000, 0x4001, 0x7FFF, 0x8000, 0xBFFF, 0xC000, 0xFFFF]
+    angles += [r.random.getrandbits(16) for _ in range(max(16, rounds // 8))]
+    wrong = [(a, s, sine_model(a)) for a in angles if (s := sine_request(uart, a)) != sine_model(a)]
+    r.check(f"{len(angles)} single angles incl. quadrant edges", not wrong,
+            ", ".join(f"angle {a} -> {s} expected {e}" for a, s, e in wrong[:4]))
+
+    latency = uart.read(51)
+    expected_latency = 6 + uart.read(45)
+    r.check(f"pipeline latency {expected_latency} clock edges", latency == expected_latency, f"read {latency}")
+
+    sweeps = [(0, 65536, 0, "full turn, back to back"), (0, 65536, 1, "full turn, irregular gaps")]
+    for _ in range(4):
+        sweeps.append((r.random.getrandbits(16), r.random.randint(1, 5000), r.random.getrandbits(1), "random range"))
+    for start, count, mode, name in sweeps:
+        sums, readies = sine_sweep(uart, start, count, mode)
+        expected = sweep_sums(start, count)
+        ok = sums == expected and readies == count
+        detail = f"{count} angles from {start}, {readies} ready"
+        if not ok:
+            angle = first_wrong_angle(uart, start, count, mode)
+            detail += f", first wrong angle {angle}: {sine_request(uart, angle)} expected {sine_model(angle)}"
+        r.check(f"sweep {name}", ok, detail)
 
 
 def main():
