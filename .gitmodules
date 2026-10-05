@@ -4,3 +4,6 @@
 [submodule "source/fpga_communication"]
 	path = source/fpga_communication
 	url = https://github.com/johonkanen/fpga_communication.git
+[submodule "source/efinix_spi_communication"]
+	path = source/efinix_spi_communication
+	url = https://github.com/johonkanen/efinix_spi_communication.git

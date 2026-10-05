@@ -25,3 +25,9 @@ ti60evm/outflow/
 ti60evm/work_*/
 ti60evm/*.log
 ti60evm/.lock
+
+# Efinity (trion/)
+trion/outflow/
+trion/work_*/
+trion/*.log
+trion/.lock

@@ -1,5 +1,5 @@
 ------------------------------------------------------------------------
--- Arrow AXC3000 (Agilex 3 A3CY100BM16AE7S) top for uart_test_core
+-- Arrow AXC3000 (Agilex 3 A3CY100BM16AE7S) top for hw_test_core
 --
 --   clk_clk       PIN_A7    1.3-V LVCMOS   25 MHz oscillator
 --   reset_reset_n PIN_A12   1.3-V LVCMOS   active low, weak pull-up
@@ -12,6 +12,8 @@
 library ieee;
     use ieee.std_logic_1164.all;
 
+    use work.fpga_interconnect_pkg.all;
+
 entity axc3000_top is
     port (
         clk_clk        : in std_logic
@@ -22,6 +24,9 @@ entity axc3000_top is
 end entity axc3000_top;
 
 architecture rtl of axc3000_top is
+
+    signal bus_to_communications   : fpga_interconnect_record;
+    signal bus_from_communications : fpga_interconnect_record;
 
     component pll_120 is
         port (
@@ -45,10 +50,22 @@ begin
         ,outclk_0 => core_clock
     );
 
-    u_core : entity work.uart_test_core
+    u_fpga_communications : entity work.fpga_communications
     generic map (
-        g_clock_divider       => 25
-        ,g_board_id           => 2
+        fpga_interconnect_pkg => work.fpga_interconnect_pkg
+        ,g_clock_divider      => 25
+    )
+    port map (
+        clock                    => core_clock
+        ,uart_rx                 => uart_rxd
+        ,uart_tx                 => uart_txd
+        ,bus_to_communications   => bus_to_communications
+        ,bus_from_communications => bus_from_communications
+    );
+
+    u_core : entity work.hw_test_core
+    generic map (
+        g_board_id            => 2
         ,g_clock_frequency_hz => 120_000_000
         -- the m20k needs its output register in front of the dsp at 120 MHz
         -- (-0.41 ns without both registers), the dsp requests go unregistered
@@ -56,11 +73,11 @@ begin
         ,g_dsp_request_register => false
     )
     port map (
-        clock      => core_clock
-        ,reset     => (not reset_reset_n) or (not pll_locked)
-        ,uart_rx   => uart_rxd
-        ,uart_tx   => uart_txd
-        ,heartbeat => open
+        clock                    => core_clock
+        ,reset                   => (not reset_reset_n) or (not pll_locked)
+        ,bus_from_communications => bus_from_communications
+        ,bus_to_communications   => bus_to_communications
+        ,heartbeat               => open
     );
 
 end architecture rtl;

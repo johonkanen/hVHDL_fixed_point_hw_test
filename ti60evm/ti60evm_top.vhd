@@ -1,5 +1,5 @@
 ------------------------------------------------------------------------
--- Efinix Ti60F225 EVM top for uart_test_core
+-- Efinix Ti60F225 EVM top for hw_test_core
 --
 -- the periphery (uart_test.peri.xml, made by make_peri.py) has
 --   25 MHz GPIOL_P_18_PLLIN0 -> main_pll (PLL_TL0) -> main_clock 120 MHz
@@ -8,6 +8,8 @@
 ------------------------------------------------------------------------
 library ieee;
     use ieee.std_logic_1164.all;
+
+    use work.fpga_interconnect_pkg.all;
 
 entity ti60evm_top is
     port (
@@ -20,22 +22,37 @@ end entity ti60evm_top;
 
 architecture rtl of ti60evm_top is
 
+    signal bus_to_communications   : fpga_interconnect_record;
+    signal bus_from_communications : fpga_interconnect_record;
+
 begin
 
-    u_core : entity work.uart_test_core
+    u_fpga_communications : entity work.fpga_communications
     generic map (
-        g_clock_divider       => 25
-        ,g_board_id           => 3
+        fpga_interconnect_pkg => work.fpga_interconnect_pkg
+        ,g_clock_divider      => 25
+    )
+    port map (
+        clock                    => main_clock
+        ,uart_rx                 => uart_rx
+        ,uart_tx                 => uart_tx
+        ,bus_to_communications   => bus_to_communications
+        ,bus_from_communications => bus_from_communications
+    );
+
+    u_core : entity work.hw_test_core
+    generic map (
+        g_board_id            => 3
         ,g_clock_frequency_hz => 120_000_000
         ,g_ram_output_register => false
         ,g_dsp_request_register => false
     )
     port map (
-        clock      => main_clock
-        ,reset     => not pll_locked
-        ,uart_rx   => uart_rx
-        ,uart_tx   => uart_tx
-        ,heartbeat => open
+        clock                    => main_clock
+        ,reset                   => not pll_locked
+        ,bus_from_communications => bus_from_communications
+        ,bus_to_communications   => bus_to_communications
+        ,heartbeat               => open
     );
 
 end architecture rtl;

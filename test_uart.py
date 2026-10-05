@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-test_uart.py - hardware test of the uart_test_core register interface
+test_uart.py - hardware test of the hw_test_core register interface
 
     python3 test_uart.py --board au         # Alchitry Au+,  5.0 Mbaud
     python3 test_uart.py --board axc3000    # Arrow AXC3000, 4.8 Mbaud
     python3 test_uart.py --board ti60evm    # Ti60F225 EVM,  4.8 Mbaud
+    python3 test_uart.py --board trion      # Trion T120F324, spi at 10 MHz
     python3 test_uart.py --board au --port /dev/ttyUSB2 --rounds 2000
 
 The serial port is found from the board's USB VID:PID and interface
@@ -15,7 +16,7 @@ fpga_communication protocol, 16 bit address, 32 bit data, big endian :
     write  : 0x04 addr[2] data[4]
     stream : 0x05 addr[2] count[3]       -> count * data[4], one address repeated
 
-Register map (source/uart_test_core.vhd) :
+Register map (source/hw_test_core.vhd) :
     1      id 0x0000ACDC                 RO
     2      git hash                      RO
     3      loopback                      RW
@@ -88,6 +89,9 @@ BOARDS = {
     "axc3000": dict(board_id=2, clock_hz=120_000_000, baud=4_800_000, vid=0x09FB, pid=0x6022, interface=1),
     "ti60evm": dict(board_id=3, clock_hz=120_000_000, baud=4_800_000, vid=0x0403, pid=0x6011, interface=2,
                     product="Ti60F225"),
+    # no uart on the trion board : spi from its FT2232H channel A, chosen by
+    # the ftdi serial number
+    "trion":   dict(board_id=4, clock_hz=60_000_000, spi_url="ftdi://ftdi:2232:FT56NF97/1", spi_hz=10e6),
 }
 
 ID_VALUE = 0x0000ACDC
@@ -119,6 +123,55 @@ class FpgaUart:
         self.uart.write(bytes([0x05]) + address.to_bytes(2, "big") + count.to_bytes(3, "big"))
         data = self._read_exact(count * 4)
         return [int.from_bytes(data[i:i + 4], "big") for i in range(0, len(data), 4)]
+
+
+class FpgaSpi:
+    """the same register access over spi (efinix_spi_communication's
+    fpga_spi_communications) : mode 0, a command followed by zero padding in
+    one chip select low exchange, the response read from the bytes clocked
+    back. after chip select falls the first byte back is 0xff, idle bytes
+    are 0x00 and a response frame starts with its nonzero header."""
+
+    PADDING = 24
+
+    def __init__(self, url, frequency):
+        from pyftdi.spi import SpiController
+        self.controller = SpiController()
+        self.controller.configure(url)
+        self.port = self.controller.get_port(cs=0, freq=frequency, mode=0)
+        self.latency = None
+
+    def close(self):
+        self.controller.terminate()
+
+    def _exchange(self, data):
+        return self.port.exchange(bytes(data), duplex=True)
+
+    def write(self, address, data):
+        self._exchange(bytes([0x04]) + address.to_bytes(2, "big") + data.to_bytes(4, "big"))
+
+    def _read_frame(self, address):
+        command = bytes([0x02]) + address.to_bytes(2, "big")
+        rx = self._exchange(command + bytes(self.PADDING))
+        start = next((i for i in range(1, len(rx)) if rx[i] != 0), None)
+        if start is None or start + 7 > len(rx):
+            raise TimeoutError(f"no spi response to the read of register {address}: {bytes(rx).hex()}")
+        return rx, start - len(command)
+
+    def read(self, address):
+        rx, latency = self._read_frame(address)
+        start = latency + 3
+        return int.from_bytes(rx[start + 3:start + 7], "big")
+
+    def stream(self, address, count):
+        """count words of one address ; the words follow the command after
+        the same number of bytes as a read response's header"""
+        if self.latency is None:
+            _, self.latency = self._read_frame(1)
+        command = bytes([0x05]) + address.to_bytes(2, "big") + count.to_bytes(3, "big")
+        rx = self._exchange(command + bytes(self.latency + 4 * count + 4))
+        first = len(command) + self.latency
+        return [int.from_bytes(rx[first + 4 * k:first + 4 * k + 4], "big") for k in range(count)]
 
 
 def find_port(board):
@@ -445,6 +498,8 @@ def run(uart, board, rounds, r):
     run_lut_divider(uart, rounds, r)
     run_full_range_sqrt(uart, rounds, r)
 
+    if not hasattr(uart, "uart"):
+        return
     uart.uart.reset_input_buffer()
     time.sleep(0.05)
     r.check("no stray bytes from the fpga", uart.uart.in_waiting == 0, f"{uart.uart.in_waiting} bytes")
@@ -717,17 +772,22 @@ def main():
     args = parser.parse_args()
 
     board = BOARDS[args.board]
+    if "spi_url" in board:
+        return run_board(board, FpgaSpi(board["spi_url"], board["spi_hz"]),
+                         f"{args.board} on {board['spi_url']} spi at {board['spi_hz'] / 1e6:g} MHz", args)
     port = args.port or find_port(board)
     if port is None:
         sys.exit(f"no serial port for {args.board} (usb {board['vid']:04x}:{board['pid']:04x} "
                  f"interface {board['interface']}), is it attached to wsl with usbipd?")
     baud = int(args.baud or board["baud"])
     set_low_latency(port)
-    print(f"{args.board} on {port} at {baud / 1e6:g} Mbaud")
+    return run_board(board, FpgaUart(port, baud), f"{args.board} on {port} at {baud / 1e6:g} Mbaud", args)
 
+
+def run_board(board, uart, description, args):
+    print(description)
     r = Results()
     r.random = random.Random(args.seed)
-    uart = FpgaUart(port, baud)
     try:
         run(uart, board, args.rounds, r)
     except TimeoutError as e:

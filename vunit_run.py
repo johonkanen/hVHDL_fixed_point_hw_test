@@ -24,6 +24,11 @@ lib.add_source_files(COM / "hVHDL_fpga_interconnect/fpga_interconnect_generic_pk
 lib.add_source_files(COM / "communications.vhd")
 lib.add_source_files(SOURCE / "fpga_interconnect_32_16_pkg.vhd")
 
+# spi link for boards without a uart (efinix_spi_communication)
+SPI = SOURCE / "efinix_spi_communication/source"
+lib.add_source_files(SPI / "spi_secondary.vhd")
+lib.add_source_files(SPI / "spi_communications.vhd")
+
 # hVHDL_fixed_point modules under test
 lib.add_source_files(FIXED / "fixed_dsp/fixed_dsp.vhd")
 lib.add_source_files(FIXED / "fixed_dsp/arch_rtl_fixed_dsp.vhd")
@@ -46,15 +51,17 @@ lib.add_source_files(SOURCE / "git_hash_pkg.vhd")
 lib.add_source_files(SOURCE / "lut_sweep.vhd")
 lib.add_source_files(SOURCE / "divider_sweep.vhd")
 lib.add_source_files(SOURCE / "sqrt_sweep.vhd")
-lib.add_source_files(SOURCE / "uart_test_core.vhd")
+lib.add_source_files(SOURCE / "hw_test_core.vhd")
 
-lib.add_source_files(ROOT / "testbench/uart_test_core_tb.vhd")
-core_tb = lib.test_bench("uart_test_core_tb")
+lib.add_source_files(ROOT / "testbench/hw_test_core_tb.vhd")
+core_tb = lib.test_bench("hw_test_core_tb")
 core_tb.add_config(name="dsp", generics=dict(pre_add_register=False))
 core_tb.add_config(name="dsp_pre_add_register", generics=dict(pre_add_register=True))
 core_tb.add_config(name="no_ram_output_register", generics=dict(ram_output_register=False))
 core_tb.add_config(name="dsp_pre_add_register_no_ram_output_register", generics=dict(pre_add_register=True, ram_output_register=False))
 core_tb.add_config(name="no_registers", generics=dict(ram_output_register=False, dsp_request_register=False))
 core_tb.add_config(name="dsp_pre_add_register_no_registers", generics=dict(pre_add_register=True, ram_output_register=False, dsp_request_register=False))
+core_tb.add_config(name="spi", generics=dict(use_spi=True))
+core_tb.add_config(name="spi_no_registers", generics=dict(use_spi=True, ram_output_register=False, dsp_request_register=False))
 
 VU.main()

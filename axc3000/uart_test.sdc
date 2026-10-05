@@ -9,6 +9,6 @@ set_false_path -from [get_ports reset_reset_n]
 set_false_path -from [get_ports uart_rxd]
 set_false_path -to   [get_ports uart_txd]
 
-# reset synchroniser in uart_test_core, its asynchronous preset comes from
+# reset synchroniser in hw_test_core, its asynchronous preset comes from
 # the reset button and pll locked
 set_false_path -to [get_registers {*reset_meta* *system_reset*}]

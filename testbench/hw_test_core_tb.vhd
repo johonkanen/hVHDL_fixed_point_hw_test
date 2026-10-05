@@ -11,13 +11,17 @@ context vunit_lib.vunit_context;
     use work.lut_divider_pkg.all;
     use work.full_range_sqrt_pkg.all;
 
--- talks to uart_test_core through its uart pins with a behavioural 8N1
--- uart, the same byte frames test_uart.py sends :
+-- talks to hw_test_core through fpga_communications' uart pins with a
+-- behavioural 8N1 uart (or fpga_spi_communications' pins, use_spi), the same byte frames test_uart.py sends :
 --   read  : 0x02 addr[2]          -> 7 byte response, data in the last 4
 --   write : 0x04 addr[2] data[4]
-entity uart_test_core_tb is
+entity hw_test_core_tb is
   generic (
       runner_cfg : string
+      -- the link : the uart, or spi (mode 0, spi_half_period clocks per
+      -- half spi clock period) like on boards without a uart
+      ;use_spi         : boolean  := false
+      ;spi_half_period : positive := 4
       ;pre_add_register : boolean := false
       ;ram_output_register : boolean := true
       ;dsp_request_register : boolean := true
@@ -34,7 +38,7 @@ entity uart_test_core_tb is
   );
 end;
 
-architecture vunit_simulation of uart_test_core_tb is
+architecture vunit_simulation of hw_test_core_tb is
 
     constant clock_period    : time    := 1 ns;
     constant g_clock_divider : natural := 25;
@@ -44,6 +48,14 @@ architecture vunit_simulation of uart_test_core_tb is
     signal reset           : std_logic := '1';
     signal to_fpga         : std_logic := '1';
     signal from_fpga       : std_logic;
+
+    signal spi_clock    : std_logic := '0';
+    signal spi_cs_in    : std_logic := '1';
+    signal spi_data_in  : std_logic := '0';
+    signal spi_data_out : std_logic;
+
+    signal bus_to_communications   : work.fpga_interconnect_pkg.fpga_interconnect_record;
+    signal bus_from_communications : work.fpga_interconnect_pkg.fpga_interconnect_record;
 
     type byte_array is array (natural range <>) of std_logic_vector(7 downto 0);
 
@@ -89,15 +101,63 @@ begin
             return (a(15 downto 8), a(7 downto 0));
         end address_bytes;
 
-        procedure write_register (address : natural; data : std_logic_vector(31 downto 0)) is
+        -- one spi exchange, chip select low throughout, mode 0, msb first
+        procedure spi_exchange (tx : byte_array; rx : out byte_array) is
+            constant half : time := spi_half_period * clock_period;
+            variable byte : std_logic_vector(7 downto 0);
         begin
-            send_frame(byte_array'(0 => x"04") & address_bytes(address)
-                & byte_array'(data(31 downto 24), data(23 downto 16), data(15 downto 8), data(7 downto 0)));
+            spi_cs_in <= '0';
+            wait for half;
+            for i in tx'range loop
+                for b in 7 downto 0 loop
+                    spi_data_in <= tx(i)(b);
+                    wait for half;
+                    byte(b)   := spi_data_out;
+                    spi_clock <= '1';
+                    wait for half;
+                    spi_clock <= '0';
+                end loop;
+                rx(i) := byte;
+            end loop;
+            wait for half;
+            spi_cs_in <= '1';
+            wait for 4*half;
+        end spi_exchange;
+
+        procedure write_register (address : natural; data : std_logic_vector(31 downto 0)) is
+            constant frame : byte_array := byte_array'(0 => x"04") & address_bytes(address)
+                & byte_array'(data(31 downto 24), data(23 downto 16), data(15 downto 8), data(7 downto 0));
+            variable rx : byte_array(frame'range);
+        begin
+            if use_spi then
+                spi_exchange(frame, rx);
+            else
+                send_frame(frame);
+            end if;
         end write_register;
 
         procedure read_register (address : natural; data : out std_logic_vector(31 downto 0)) is
-            constant first : natural := received_count;
+            constant first   : natural := received_count;
+            -- spi : the command, then zeros that clock the response out ; the
+            -- response is the 7 byte frame starting at the first nonzero byte
+            -- after the first one out (0xff)
+            constant command : byte_array := byte_array'(0 => x"02") & address_bytes(address);
+            constant tx      : byte_array := command & byte_array'(0 to 23 => x"00");
+            variable rx      : byte_array(tx'range);
+            variable start   : integer := -1;
         begin
+            if use_spi then
+                spi_exchange(tx, rx);
+                for i in 1 to rx'high loop
+                    if rx(i) /= x"00" then
+                        start := i;
+                        exit;
+                    end if;
+                end loop;
+                check(start >= 0 and start + 6 <= rx'high, "no spi response to read of register " & integer'image(address));
+                data := rx(start+3) & rx(start+4) & rx(start+5) & rx(start+6);
+                return;
+            end if;
             send_frame(byte_array'(0 => x"02") & address_bytes(address));
             if received_count < first + 7 then
                 wait until received_count >= first + 7 for 200*bit_time;
@@ -425,10 +485,42 @@ begin
         received_count <= received_count + 1;
     end process receiver;
 ------------------------------------------------------------------------
-    u_dut : entity work.uart_test_core
+    uart_link : if not use_spi generate
+        u_fpga_communications : entity work.fpga_communications
+        generic map (
+            fpga_interconnect_pkg => work.fpga_interconnect_pkg
+            ,g_clock_divider      => g_clock_divider
+        )
+        port map (
+            clock                    => simulator_clock
+            ,uart_rx                 => to_fpga
+            ,uart_tx                 => from_fpga
+            ,bus_to_communications   => bus_to_communications
+            ,bus_from_communications => bus_from_communications
+        );
+    end generate;
+
+    spi_link : if use_spi generate
+        from_fpga <= '1';
+
+        u_fpga_spi_communications : entity work.fpga_spi_communications
+        generic map (
+            fpga_interconnect_pkg => work.fpga_interconnect_pkg
+        )
+        port map (
+            clock                    => simulator_clock
+            ,spi_clock               => spi_clock
+            ,spi_cs_in               => spi_cs_in
+            ,spi_data_in             => spi_data_in
+            ,spi_data_out            => spi_data_out
+            ,bus_to_communications   => bus_to_communications
+            ,bus_from_communications => bus_from_communications
+        );
+    end generate;
+
+    u_dut : entity work.hw_test_core
     generic map (
-        g_clock_divider       => g_clock_divider
-        ,g_board_id           => 7
+        g_board_id            => 7
         ,g_clock_frequency_hz => 120_000_000
         ,g_dsp_pre_add_register => pre_add_register
         ,g_ram_output_register  => ram_output_register
@@ -445,8 +537,8 @@ begin
     port map (
         clock      => simulator_clock
         ,reset     => reset
-        ,uart_rx   => to_fpga
-        ,uart_tx   => from_fpga
+        ,bus_from_communications => bus_from_communications
+        ,bus_to_communications   => bus_to_communications
         ,heartbeat => open
     );
 ------------------------------------------------------------------------

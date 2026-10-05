@@ -1,7 +1,10 @@
 ------------------------------------------------------------------------
--- uart_test_core - board independent uart register test
+-- hw_test_core - board independent register test
 --
--- fpga_communication uart (32 bit data, 16 bit address) with :
+-- the registers on fpga_interconnect (32 bit data, 16 bit address) ; the
+-- board top connects the buses to its link to the pc, fpga_communication's
+-- uart (fpga_communications) or efinix_spi_communication's spi
+-- (fpga_spi_communications) :
 --
 --   1      : id 0x0000ACDC                                      RO
 --   2      : git hash                                           RO
@@ -72,10 +75,11 @@ library ieee;
     use ieee.std_logic_1164.all;
     use ieee.numeric_std.all;
 
-entity uart_test_core is
+    use work.fpga_interconnect_pkg.all;
+
+entity hw_test_core is
     generic (
-        g_clock_divider       : natural := 25 -- core clock / baud
-        ;g_board_id           : natural := 0
+        g_board_id            : natural := 0
         ;g_clock_frequency_hz : natural := 120_000_000
         ;g_dsp_word_length    : natural := 32 -- 2..32
         ;g_dsp_pre_add_register : boolean := false -- fixed_dsp g_pre_add_register
@@ -101,15 +105,15 @@ entity uart_test_core is
     port (
         clock      : in std_logic
         ;reset     : in std_logic
-        ;uart_rx   : in std_logic
-        ;uart_tx   : out std_logic
+        -- from and to the link's fpga_communications / fpga_spi_communications
+        ;bus_from_communications : in fpga_interconnect_record
+        ;bus_to_communications   : out fpga_interconnect_record := init_fpga_interconnect
         ;heartbeat : out std_logic -- toggles at about 1 Hz
     );
-end entity uart_test_core;
+end entity hw_test_core;
 
-architecture rtl of uart_test_core is
+architecture rtl of hw_test_core is
 
-    use work.fpga_interconnect_pkg.all;
     use work.fixed_dsp_pkg.all;
     use work.git_hash_pkg.all;
     use work.sine_calculator_pkg.all;
@@ -119,8 +123,6 @@ architecture rtl of uart_test_core is
     signal reset_meta   : std_logic := '1';
     signal system_reset : std_logic := '1';
 
-    signal bus_to_communications   : fpga_interconnect_record := init_fpga_interconnect;
-    signal bus_from_communications : fpga_interconnect_record := init_fpga_interconnect;
     signal bus_from_top            : fpga_interconnect_record := init_fpga_interconnect;
     signal bus_from_dsp            : fpga_interconnect_record := init_fpga_interconnect;
     signal bus_from_sine           : fpga_interconnect_record := init_fpga_interconnect;
@@ -505,20 +507,6 @@ begin
         ,reset   => system_reset
         ,bus_in  => bus_from_communications
         ,bus_out => bus_from_root
-    );
-
-------------------------------------------------------------------------
-    u_fpga_communications : entity work.fpga_communications
-    generic map (
-        fpga_interconnect_pkg => work.fpga_interconnect_pkg
-        ,g_clock_divider      => g_clock_divider
-    )
-    port map (
-        clock                    => clock
-        ,uart_rx                 => uart_rx
-        ,uart_tx                 => uart_tx
-        ,bus_to_communications   => bus_to_communications
-        ,bus_from_communications => bus_from_communications
     );
 
 end architecture rtl;

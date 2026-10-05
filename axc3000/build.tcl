@@ -66,7 +66,7 @@ set_global_assignment -name VHDL_FILE $source_dir/git_hash_pkg.vhd
 set_global_assignment -name VHDL_FILE $source_dir/lut_sweep.vhd
 set_global_assignment -name VHDL_FILE $source_dir/divider_sweep.vhd
 set_global_assignment -name VHDL_FILE $source_dir/sqrt_sweep.vhd
-set_global_assignment -name VHDL_FILE $source_dir/uart_test_core.vhd
+set_global_assignment -name VHDL_FILE $source_dir/hw_test_core.vhd
 set_global_assignment -name VHDL_FILE $this_file_path/axc3000_top.vhd
 
 # ------------------------------------------------------------------- IP

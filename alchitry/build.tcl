@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------
-# build.tcl - non-project Vivado build of uart_test_core for the Alchitry Au+
+# build.tcl - non-project Vivado build of hw_test_core for the Alchitry Au+
 #
 #   vivado -mode batch -source build.tcl      (or ./build.sh)
 #
@@ -42,7 +42,7 @@ set VHDL_SOURCES [list \
     "$SOURCE_DIR/lut_sweep.vhd" \
     "$SOURCE_DIR/divider_sweep.vhd" \
     "$SOURCE_DIR/sqrt_sweep.vhd" \
-    "$SOURCE_DIR/uart_test_core.vhd" \
+    "$SOURCE_DIR/hw_test_core.vhd" \
     "$BOARD_DIR/main_clocks.vhd" \
     "$BOARD_DIR/alchitry_au_top.vhd" \
 ]
