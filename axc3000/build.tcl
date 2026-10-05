@@ -14,6 +14,7 @@ variable this_file_path [file dirname [file normalize [info script]]]
 variable root_dir       [file dirname $this_file_path]
 variable source_dir     $root_dir/source
 variable com_dir        $source_dir/fpga_communication
+variable fixed_dir      $source_dir/hVHDL_fixed_point
 
 set need_to_close_project 0
 if {[is_project_open]} {
@@ -35,7 +36,7 @@ set_global_assignment -name PROJECT_OUTPUT_DIRECTORY output_files
 set_global_assignment -name MIN_CORE_JUNCTION_TEMP 0
 set_global_assignment -name MAX_CORE_JUNCTION_TEMP 100
 set_global_assignment -name ERROR_CHECK_FREQUENCY_DIVISOR 256
-set_global_assignment -name VHDL_INPUT_VERSION VHDL_2008
+set_global_assignment -name VHDL_INPUT_VERSION VHDL_2019
 set_global_assignment -name OPTIMIZATION_MODE BALANCED
 set_global_assignment -name BOARD default
 set_global_assignment -name USE_CONF_DONE SDM_IO16
@@ -48,6 +49,8 @@ set_global_assignment -name VHDL_FILE $com_dir/serial_protocol_generic_pkg.vhd
 set_global_assignment -name VHDL_FILE $com_dir/hVHDL_fpga_interconnect/fpga_interconnect_generic_pkg.vhd
 set_global_assignment -name VHDL_FILE $com_dir/communications.vhd
 set_global_assignment -name VHDL_FILE $source_dir/fpga_interconnect_32_16_pkg.vhd
+set_global_assignment -name VHDL_FILE $fixed_dir/fixed_dsp/fixed_dsp.vhd
+set_global_assignment -name VHDL_FILE $fixed_dir/fixed_dsp/arch_rtl_fixed_dsp.vhd
 set_global_assignment -name VHDL_FILE $source_dir/git_hash_pkg.vhd
 set_global_assignment -name VHDL_FILE $source_dir/uart_test_core.vhd
 set_global_assignment -name VHDL_FILE $this_file_path/axc3000_top.vhd

@@ -12,6 +12,8 @@
         <efx:design_file name="../source/fpga_communication/hVHDL_fpga_interconnect/fpga_interconnect_generic_pkg.vhd" version="default" library="default" />
         <efx:design_file name="../source/fpga_communication/communications.vhd" version="default" library="default" />
         <efx:design_file name="../source/fpga_interconnect_32_16_pkg.vhd" version="default" library="default" />
+        <efx:design_file name="../source/hVHDL_fixed_point/fixed_dsp/fixed_dsp.vhd" version="default" library="default" />
+        <efx:design_file name="../source/hVHDL_fixed_point/fixed_dsp/arch_rtl_fixed_dsp.vhd" version="default" library="default" />
         <efx:design_file name="../source/git_hash_pkg.vhd" version="default" library="default" />
         <efx:design_file name="../source/uart_test_core.vhd" version="default" library="default" />
         <efx:design_file name="ti60evm_top.vhd" version="default" library="default" />
@@ -45,7 +47,7 @@
         <efx:param name="hdl-compile-unit" value="1" value_type="e_option" />
         <efx:param name="hdl-loop-limit" value="20000" value_type="e_integer" />
         <efx:param name="infer-clk-enable" value="3" value_type="e_option" />
-        <efx:param name="infer-sync-set-reset" value="1" value_type="e_option" />
+        <efx:param name="infer-sync-set-reset" value="0" value_type="e_option" />
         <efx:param name="max_ram" value="-1" value_type="e_integer" />
         <efx:param name="max_mult" value="-1" value_type="e_integer" />
         <efx:param name="min-sr-fanout" value="0" value_type="e_integer" />

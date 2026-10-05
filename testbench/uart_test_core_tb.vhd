@@ -87,6 +87,16 @@ begin
             check_equal(data, expected, "register " & integer'image(address));
         end check_register;
 
+        procedure write_register (address : natural; data : integer) is
+        begin
+            write_register(address, std_logic_vector(to_signed(data, 32)));
+        end write_register;
+
+        procedure check_register (address : natural; expected : integer) is
+        begin
+            check_register(address, std_logic_vector(to_signed(expected, 32)));
+        end check_register;
+
         variable data1, data2 : std_logic_vector(31 downto 0);
 
     begin
@@ -117,11 +127,54 @@ begin
         end loop;
         check_register(3, x"deadbeef");
 
+        -- fixed_dsp : (a - d) * b + c = (5 - 1) * 7 + 3 = 31
+        check_register(44, 32);
+        write_register(32, 5);
+        write_register(33, 1);
+        write_register(34, 7);
+        write_register(35, 3);
+        write_register(36, 0);
+        write_register(37, 1); -- pre_subtract
+        write_register(38, 1);
+        check_register(39, 31);
+        check_register(40, 0);
+        check_register(41, 2); -- fixed_dsp(rtl) pipeline depth
+        check_register(42, 1);
+
+        -- -((a + d) * b - c) = -((5 + 1) * 7 - 3) = -39, 64 bit result
+        write_register(37, 2#0110#); -- post_subtract, invert_result
+        write_register(38, 1);
+        check_register(39, -39);
+        check_register(40, -1);
+
+        -- 100 back to back accumulates of (a + d) * b = 6 * 7
+        write_register(37, 2#1000#);
+        write_register(38, 100);
+        check_register(39, 4200);
+        check_register(42, 100);
+
+        -- 64 bit product : 0x40000000 * 0x40000000 = 2**60 + c 0x1_00000005
+        write_register(32, 16#40000000#);
+        write_register(33, 0);
+        write_register(34, 16#40000000#);
+        write_register(35, 5);
+        write_register(36, 1);
+        write_register(37, 0);
+        write_register(38, 1);
+        check_register(39, 5);
+        check_register(40, 16#10000001#);
+
+        -- accumulator reset
+        write_register(43, 1);
+        check_register(39, 0);
+        check_register(40, 0);
+        check_register(42, 1);
+
         test_runner_cleanup(runner);
         wait;
     end process stimulus;
 
-    test_runner_watchdog(runner, 10 ms);
+    test_runner_watchdog(runner, 50 ms);
 ------------------------------------------------------------------------
     -- 8N1 receiver, runs alongside the sender since the fpga can start
     -- its response while the last stop bit of a request is still going out

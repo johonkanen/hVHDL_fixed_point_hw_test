@@ -7,6 +7,7 @@ from vunit import VUnit
 ROOT = Path(__file__).resolve().parent
 SOURCE = ROOT / "source"
 COM = SOURCE / "fpga_communication"
+FIXED = SOURCE / "hVHDL_fixed_point"
 
 if not (SOURCE / "git_hash_pkg.vhd").exists():
     subprocess.run([ROOT / "write_git_hash.sh"], check=True)
@@ -22,6 +23,10 @@ lib.add_source_files(COM / "serial_protocol_generic_pkg.vhd")
 lib.add_source_files(COM / "hVHDL_fpga_interconnect/fpga_interconnect_generic_pkg.vhd")
 lib.add_source_files(COM / "communications.vhd")
 lib.add_source_files(SOURCE / "fpga_interconnect_32_16_pkg.vhd")
+
+# hVHDL_fixed_point modules under test
+lib.add_source_files(FIXED / "fixed_dsp/fixed_dsp.vhd")
+lib.add_source_files(FIXED / "fixed_dsp/arch_rtl_fixed_dsp.vhd")
 
 lib.add_source_files(SOURCE / "git_hash_pkg.vhd")
 lib.add_source_files(SOURCE / "uart_test_core.vhd")

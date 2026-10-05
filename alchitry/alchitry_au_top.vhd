@@ -1,8 +1,9 @@
 ------------------------------------------------------------------------
 -- Alchitry Au+ (XC7A100T-1FTG256) top for uart_test_core
 --
--- 100 MHz oscillator -> PLLE2 -> 120 MHz core clock
--- uart on the FT2232 channel B, 120 MHz / 24 = 5 Mbaud
+-- 100 MHz oscillator -> PLLE2 -> 100 MHz core clock (fixed_dsp(rtl) does not
+-- close timing at 120 MHz on the -1 Artix-7, see main_clocks.vhd)
+-- uart on the FT2232 channel B, 100 MHz / 20 = 5 Mbaud
 -- led 0 blinks at 0.5 Hz, led 7 is pll locked
 ------------------------------------------------------------------------
 library ieee;
@@ -33,7 +34,7 @@ begin
     port map (
         clock_100mhz  => clk
         ,reset        => pll_reset
-        ,clock_120mhz => main_clock
+        ,main_clock   => main_clock
         ,pll_locked   => pll_locked
     );
 
@@ -41,9 +42,9 @@ begin
 
     u_core : entity work.uart_test_core
     generic map (
-        g_clock_divider       => 24
+        g_clock_divider       => 20
         ,g_board_id           => 1
-        ,g_clock_frequency_hz => 120_000_000
+        ,g_clock_frequency_hz => 100_000_000
     )
     port map (
         clock      => main_clock

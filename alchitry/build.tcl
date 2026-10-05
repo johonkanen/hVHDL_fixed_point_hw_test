@@ -13,6 +13,7 @@ set BOARD_DIR  [file normalize [file dirname [info script]]]
 set ROOT_DIR   [file dirname $BOARD_DIR]
 set SOURCE_DIR "$ROOT_DIR/source"
 set COM_DIR    "$SOURCE_DIR/fpga_communication"
+set FIXED_DIR  "$SOURCE_DIR/hVHDL_fixed_point"
 set OUTPUT_DIR "$BOARD_DIR/output"
 
 file mkdir $OUTPUT_DIR
@@ -24,6 +25,8 @@ set VHDL_SOURCES [list \
     "$COM_DIR/hVHDL_fpga_interconnect/fpga_interconnect_generic_pkg.vhd" \
     "$COM_DIR/communications.vhd" \
     "$SOURCE_DIR/fpga_interconnect_32_16_pkg.vhd" \
+    "$FIXED_DIR/fixed_dsp/fixed_dsp.vhd" \
+    "$FIXED_DIR/fixed_dsp/arch_rtl_fixed_dsp.vhd" \
     "$SOURCE_DIR/git_hash_pkg.vhd" \
     "$SOURCE_DIR/uart_test_core.vhd" \
     "$BOARD_DIR/main_clocks.vhd" \
@@ -34,7 +37,8 @@ foreach f $VHDL_SOURCES {
     if {![file exists $f]} {
         error "missing source $f, run 'git submodule update --init --recursive'"
     }
-    read_vhdl -vhdl2008 $f
+    # vhdl-2019 like the datacenter_peak_shaving builds read hVHDL_fixed_point
+    read_vhdl -vhdl2019 $f
 }
 read_xdc "$BOARD_DIR/alchitry_au.xdc"
 
