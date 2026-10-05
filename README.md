@@ -130,7 +130,7 @@ the first wrong input.
 | 96, 97    | numerator, denominator (also the sweep seeds)                   | RW |
 | 98        | write → one division                                            | WO |
 | 99, 100   | last quotient, last division_by_zero                            | RO |
-| 101       | clock edges from the request to ready (15, or 17 with the pre-adder registered) | RO |
+| 101       | clock edges from the request to ready (13, or 15 with the pre-adder registered) | RO |
 | 102       | write N → sweep N divisions, one per clock (0 = 65536)          | WO |
 | 103       | sweep mode: bit 0 = 0 fixed numerator and denominator +1 per division, bit 0 = 1 operands from two 32-bit Galois LFSRs (x >> 1 xor 0x80200003) with the denominator shifted right by 0..31, bit 1 irregular gaps | RW |
 | 104, 105  | sweep checksums: s1 += quotient, s2 += s1                       | RO |
@@ -148,7 +148,7 @@ exact division (16-bit reciprocal table).
 | 112       | radicand (also the sweep start / LFSR seed)                     | RW |
 | 113       | write → one square root                                         | WO |
 | 114       | last root                                                       | RO |
-| 115       | clock edges from the request to ready (15, or 17 with the pre-adder registered) | RO |
+| 115       | clock edges from the request to ready (13, or 15 with the pre-adder registered) | RO |
 | 116       | write N → sweep N roots, one per clock (0 = 65536)              | WO |
 | 117       | sweep mode: bit 0 = 0 radicand +1 per root, bit 0 = 1 radicands from a 32-bit Galois LFSR (x >> 1 xor 0x80200003) shifted right by their own low 5 bits, bit 1 irregular gaps | RW |
 | 118, 119  | sweep checksums: s1 += root, s2 += s1                           | RO |
