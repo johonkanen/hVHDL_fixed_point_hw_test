@@ -1,0 +1,56 @@
+------------------------------------------------------------------------
+-- Alchitry Au+ (XC7A100T-1FTG256) top for uart_test_core
+--
+-- 100 MHz oscillator -> PLLE2 -> 120 MHz core clock
+-- uart on the FT2232 channel B, 120 MHz / 24 = 5 Mbaud
+-- led 0 blinks at 0.5 Hz, led 7 is pll locked
+------------------------------------------------------------------------
+library ieee;
+    use ieee.std_logic_1164.all;
+
+entity alchitry_au_top is
+    port (
+        clk     : in std_logic
+        ;rst_n  : in std_logic
+        ;usb_rx : in std_logic
+        ;usb_tx : out std_logic
+        ;led    : out std_logic_vector(7 downto 0)
+    );
+end entity alchitry_au_top;
+
+architecture rtl of alchitry_au_top is
+
+    signal main_clock : std_logic;
+    signal pll_locked : std_logic;
+    signal pll_reset  : std_logic;
+    signal heartbeat  : std_logic;
+
+begin
+
+    pll_reset <= not rst_n;
+
+    u_main_clocks : entity work.main_clocks
+    port map (
+        clock_100mhz  => clk
+        ,reset        => pll_reset
+        ,clock_120mhz => main_clock
+        ,pll_locked   => pll_locked
+    );
+
+    led <= pll_locked & "000000" & heartbeat;
+
+    u_core : entity work.uart_test_core
+    generic map (
+        g_clock_divider       => 24
+        ,g_board_id           => 1
+        ,g_clock_frequency_hz => 120_000_000
+    )
+    port map (
+        clock      => main_clock
+        ,reset     => not pll_locked
+        ,uart_rx   => usb_rx
+        ,uart_tx   => usb_tx
+        ,heartbeat => heartbeat
+    );
+
+end architecture rtl;
