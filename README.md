@@ -7,7 +7,7 @@ result bit for bit against a Python model of the architecture.
 
 | folder      | board                                   | toolchain              | clock              | UART                            |
 |-------------|-----------------------------------------|------------------------|--------------------|---------------------------------|
-| `alchitry/` | Alchitry Au+ (XC7A100T-1FTG256)         | Vivado 2024.2          | 100 MHz → 100 MHz  | FT2232H ch B, 5.0 Mbaud (÷20)   |
+| `alchitry/` | Alchitry Au+ (XC7A100T-1FTG256)         | Vivado 2024.2          | 100 MHz → 120 MHz  | FT2232H ch B, 5.0 Mbaud (÷24)   |
 | `axc3000/`  | Arrow AXC3000 (Agilex 3 A3CY100BM16AE7S) | Quartus Pro 26.1.1     | 25 MHz → 120 MHz   | USB Blaster III, 4.8 Mbaud (÷25) |
 | `ti60evm/`  | Efinix Ti60F225 EVM                     | Efinity 2026.1         | 25 MHz → 120 MHz   | FT4232H ch C, 4.8 Mbaud (÷25)    |
 
@@ -87,10 +87,11 @@ reference 0.
 | 37     | control: bit 0 pre_subtract, 1 post_subtract, 2 invert, 3 accumulate | RW |
 | 38     | write N → N back-to-back `fmac` requests (0 counts as 1)         | WO |
 | 39, 40 | result low, high word, captured on ready                         | RO |
-| 41     | clock edges from the request at `fixed_dsp`'s input to ready (2) | RO |
+| 41     | clock edges from the request at `fixed_dsp`'s input to ready (2, or 3 with the pre-adder registered) | RO |
 | 42     | ready pulses of the last command                                 | RO |
 | 43     | write → accumulator reset request                                | WO |
 | 44     | dsp word length                                                  | RO |
+| 45     | 1 when the pre-adder is registered (`g_dsp_pre_add_register`)    | RO |
 
 `fixed_dsp(rtl)` recomputes its result register on every clock and the core
 drives `init_fixed_dsp` while idle, so an accumulate only carries over
@@ -102,9 +103,12 @@ operands with every flag combination and bursts of up to 300.
 
 ## Board notes
 
-* **Alchitry Au+ runs at 100 MHz.** `fixed_dsp(rtl)` puts the 32-bit pre-adder
-  and the cascaded 32×32 DSP48 multiply in one register stage, which misses
-  120 MHz on the -1 Artix-7 by 0.87 ns (about 108 MHz max).
+* **Alchitry Au+ registers the pre-adder.** By default `fixed_dsp(rtl)` puts
+  the 32-bit pre-adder and the cascaded 32×32 DSP48 multiply in one register
+  stage, which misses 120 MHz on the -1 Artix-7 by 0.87 ns. The Alchitry top
+  sets `g_dsp_pre_add_register` (the `fixed_dsp` generic `g_pre_add_register`),
+  which adds a register between the pre-adder and the multiplier: +0.39 ns at
+  120 MHz, latency 3.
 * **Ti60 EVM needs `infer-sync-set-reset` off** in `ti60evm/uart_test.xml`.
   With Efinity 2026.1's default (on), the 32×32 product is wrong for most
   operands (2.5 × 1.5 gives 0) and an accumulator reset reads back 1. The

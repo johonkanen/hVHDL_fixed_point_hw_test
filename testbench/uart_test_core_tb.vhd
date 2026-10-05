@@ -10,7 +10,10 @@ context vunit_lib.vunit_context;
 --   read  : 0x02 addr[2]          -> 7 byte response, data in the last 4
 --   write : 0x04 addr[2] data[4]
 entity uart_test_core_tb is
-  generic (runner_cfg : string);
+  generic (
+      runner_cfg : string
+      ;pre_add_register : boolean := false
+  );
 end;
 
 architecture vunit_simulation of uart_test_core_tb is
@@ -138,7 +141,8 @@ begin
         write_register(38, 1);
         check_register(39, 31);
         check_register(40, 0);
-        check_register(41, 2); -- fixed_dsp(rtl) pipeline depth
+        check_register(41, 2 + boolean'pos(pre_add_register)); -- fixed_dsp(rtl) pipeline depth
+        check_register(45, boolean'pos(pre_add_register));
         check_register(42, 1);
 
         -- -((a + d) * b - c) = -((5 + 1) * 7 - 3) = -39, 64 bit result
@@ -197,6 +201,7 @@ begin
         g_clock_divider       => g_clock_divider
         ,g_board_id           => 7
         ,g_clock_frequency_hz => 120_000_000
+        ,g_dsp_pre_add_register => pre_add_register
     )
     port map (
         clock      => simulator_clock

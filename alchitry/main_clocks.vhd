@@ -4,12 +4,8 @@ library ieee;
 library unisim;
     use unisim.vcomponents.all;
 
--- 100 MHz board oscillator -> 100 MHz logic clock through the pll
--- VCO = 100 MHz * 12 / 1 = 1200 MHz, clkout0 = 1200 MHz / 12 = 100 MHz
---
--- fixed_dsp(rtl) does the 32 bit pre-adder and the cascaded 32x32 DSP48
--- multiply in one register stage, which closes at about 108 MHz on the
--- XC7A100T-1 (-0.87 ns at 120 MHz)
+-- 100 MHz board oscillator -> 120 MHz logic clock
+-- VCO = 100 MHz * 12 / 1 = 1200 MHz, clkout0 = 1200 MHz / 10 = 120 MHz
 entity main_clocks is
     port (
         clock_100mhz : in std_logic;
@@ -34,7 +30,7 @@ begin
         DIVCLK_DIVIDE      => 1,
         CLKFBOUT_MULT      => 12,
         CLKFBOUT_PHASE     => 0.0,
-        CLKOUT0_DIVIDE     => 12,
+        CLKOUT0_DIVIDE     => 10,
         CLKOUT0_DUTY_CYCLE => 0.5,
         CLKOUT0_PHASE      => 0.0,
         STARTUP_WAIT       => "FALSE")

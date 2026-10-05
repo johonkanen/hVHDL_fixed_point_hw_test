@@ -31,6 +31,7 @@
 --   42 : ready pulses since the last command                    RO
 --   43 : write -> accumulator reset request                     WO
 --   44 : g_dsp_word_length                                      RO
+--   45 : 1 when g_dsp_pre_add_register is set (latency 3)       RO
 --
 -- fixed_dsp recomputes its result register on every clock, the core drives
 -- init_fixed_dsp while idle so an accumulate only carries across back to
@@ -49,6 +50,7 @@ entity uart_test_core is
         ;g_board_id           : natural := 0
         ;g_clock_frequency_hz : natural := 120_000_000
         ;g_dsp_word_length    : natural := 32 -- 2..32
+        ;g_dsp_pre_add_register : boolean := false -- fixed_dsp g_pre_add_register
     );
     port (
         clock      : in std_logic
@@ -200,6 +202,7 @@ begin
             connect_read_only_data_to_address(bus_from_communications, bus_from_dsp, 41, std_logic_vector(dsp_latency));
             connect_read_only_data_to_address(bus_from_communications, bus_from_dsp, 42, std_logic_vector(ready_count));
             connect_read_only_data_to_address(bus_from_communications, bus_from_dsp, 44, std_logic_vector(to_unsigned(dsp_n, 32)));
+            connect_read_only_data_to_address(bus_from_communications, bus_from_dsp, 45, std_logic_vector(to_unsigned(boolean'pos(g_dsp_pre_add_register), 32)));
 
             ------------------------------
             init_fixed_dsp(dsp_in);
@@ -271,6 +274,7 @@ begin
     end process dsp_test;
 
     u_fixed_dsp : entity work.fixed_dsp(rtl)
+    generic map (g_pre_add_register => g_dsp_pre_add_register)
     port map (
         clock          => clock
         ,fixed_dsp_in  => dsp_in

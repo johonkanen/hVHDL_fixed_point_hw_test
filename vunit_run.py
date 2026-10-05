@@ -32,5 +32,8 @@ lib.add_source_files(SOURCE / "git_hash_pkg.vhd")
 lib.add_source_files(SOURCE / "uart_test_core.vhd")
 
 lib.add_source_files(ROOT / "testbench/uart_test_core_tb.vhd")
+core_tb = lib.test_bench("uart_test_core_tb")
+core_tb.add_config(name="dsp", generics=dict(pre_add_register=False))
+core_tb.add_config(name="dsp_pre_add_register", generics=dict(pre_add_register=True))
 
 VU.main()

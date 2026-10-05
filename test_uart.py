@@ -34,6 +34,7 @@ Register map (source/uart_test_core.vhd) :
     42 ready pulses of the last command                          RO
     43 write -> accumulator reset                                WO
     44 dsp word length n                                         RO
+    45 1 when the pre-adder is registered (latency 3)             RO
 
 Exit status 0 = all passed.
 """
@@ -51,7 +52,7 @@ except ImportError:
 
 # board id, core clock, baud, usb vid, pid, uart interface number
 BOARDS = {
-    "au":      dict(board_id=1, clock_hz=100_000_000, baud=5_000_000, vid=0x0403, pid=0x6010, interface=1),
+    "au":      dict(board_id=1, clock_hz=120_000_000, baud=5_000_000, vid=0x0403, pid=0x6010, interface=1),
     "axc3000": dict(board_id=2, clock_hz=120_000_000, baud=4_800_000, vid=0x09FB, pid=0x6022, interface=1),
     "ti60evm": dict(board_id=3, clock_hz=120_000_000, baud=4_800_000, vid=0x0403, pid=0x6011, interface=2),
 }
@@ -256,8 +257,11 @@ def run_fixed_dsp(uart, rounds, r):
     check_case("mac x8 of 1.5 * 1.25 = 15", fix(1.5), 0, fix(1.25), 0, ACCUMULATE, 8)
     check_case("mac subtract x8 of 1.5 * 1.25 = -15", fix(1.5), 0, fix(1.25), 0, ACCUMULATE | POST_SUBTRACT, 8)
 
+    pre_add_register = uart.read(45)
+    expected_latency = 2 + pre_add_register
     latency = uart.read(41)
-    r.check("pipeline latency 2 clock edges", latency == 2, f"read {latency}")
+    r.check(f"pipeline latency {expected_latency} clock edges"
+            f"{' (pre-adder registered)' if pre_add_register else ''}", latency == expected_latency, f"read {latency}")
 
     lo, hi = -(1 << (n - 1)), (1 << (n - 1)) - 1
     check_case("min * min", lo, 0, lo, 0, 0)
