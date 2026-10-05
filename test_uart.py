@@ -68,11 +68,15 @@ try:
 except ImportError:
     sys.exit("this script needs pyserial:  pip install pyserial")
 
-# board id, core clock, baud, usb vid, pid, uart interface number
+# board id, core clock, baud, usb vid, pid, uart interface number, and
+# strings the usb product description must (product) or must not (not_product)
+# contain : the Alchitry's FT2232 has the same ids as Efinix's Trion boards
 BOARDS = {
-    "au":      dict(board_id=1, clock_hz=120_000_000, baud=5_000_000, vid=0x0403, pid=0x6010, interface=1),
+    "au":      dict(board_id=1, clock_hz=120_000_000, baud=5_000_000, vid=0x0403, pid=0x6010, interface=1,
+                    not_product=["Trion", "Titanium"]),
     "axc3000": dict(board_id=2, clock_hz=120_000_000, baud=4_800_000, vid=0x09FB, pid=0x6022, interface=1),
-    "ti60evm": dict(board_id=3, clock_hz=120_000_000, baud=4_800_000, vid=0x0403, pid=0x6011, interface=2),
+    "ti60evm": dict(board_id=3, clock_hz=120_000_000, baud=4_800_000, vid=0x0403, pid=0x6011, interface=2,
+                    product="Ti60F225"),
 }
 
 ID_VALUE = 0x0000ACDC
@@ -107,11 +111,20 @@ class FpgaUart:
 
 
 def find_port(board):
+    """the board's uart port, None when there is none, sys.exit when several
+    attached boards match"""
+    candidates = []
     for p in serial.tools.list_ports.comports():
+        description = f"{p.description} {p.product or ''}"
         if p.vid == board["vid"] and p.pid == board["pid"] and p.location \
-                and p.location.endswith(f".{board['interface']}"):
-            return p.device
-    return None
+                and p.location.endswith(f".{board['interface']}") \
+                and board.get("product", "") in description \
+                and not any(x in description for x in board.get("not_product", [])):
+            candidates.append(p)
+    if len(candidates) > 1:
+        sys.exit("several boards match, choose one with --port : "
+                 + ", ".join(f"{p.device} ({p.description}, serial {p.serial_number})" for p in candidates))
+    return candidates[0].device if candidates else None
 
 
 def set_low_latency(port):
