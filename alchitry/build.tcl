@@ -35,6 +35,7 @@ set VHDL_SOURCES [list \
     "$FIXED_DIR/reciprocal_calculator/reciprocal_calculator.vhd" \
     "$FIXED_DIR/lut_interpolation/lut_sqrt_pkg.vhd" \
     "$FIXED_DIR/sqrt_calculator/sqrt_calculator.vhd" \
+    "$FIXED_DIR/fixed_point_scaling/fixed_point_scaling_pkg.vhd" \
     "$FIXED_DIR/lut_divider/lut_divider.vhd" \
     "$FIXED_DIR/full_range_sqrt/full_range_sqrt.vhd" \
     "$SOURCE_DIR/git_hash_pkg.vhd" \

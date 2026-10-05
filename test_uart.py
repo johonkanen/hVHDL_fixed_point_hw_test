@@ -555,10 +555,10 @@ def run_lut_divider(uart, rounds, r):
             wrong.append(f"{n}/{d} -> {q} expected {lut_divide_model(n, d, QUOTIENT_RADIX)}")
     r.check(f"{len(pairs)} single divisions incl. edge cases", not wrong, ", ".join(wrong[:3]))
 
-    # input 1 + normalise 5 + reciprocal_calculator 4 + dsp + multiply 1 +
-    # dsp + shift 5 + output 1, both dsps one longer with the pre-adder register
+    # input 1 + normalise 2 + reciprocal_calculator 4 + dsp + multiply 1 +
+    # dsp + product 1 + shift 2, both dsps one longer with the pre-adder register
     latency = uart.read(DIVIDER_BASE + 5)
-    expected_latency = 21 + 2 * uart.read(45)
+    expected_latency = 15 + 2 * uart.read(45)
     r.check(f"pipeline latency {expected_latency} clock edges", latency == expected_latency, f"read {latency}")
 
     sweeps = [(0, 100000, -3000, 6000, "denominators -3000 .. 2999"),
@@ -617,10 +617,10 @@ def run_full_range_sqrt(uart, rounds, r):
              for x in radicands if (y := square_root(uart, x)) != full_range_sqrt_model(x, ROOT_RADIX)]
     r.check(f"{len(radicands)} single roots incl. edge cases", not wrong, ", ".join(wrong[:3]))
 
-    # input 1 + normalise 5 + sqrt_calculator 4 + dsp + multiply 1 + dsp +
-    # shift 5 + output 1, both dsps one longer with the pre-adder register
+    # input 1 + normalise 2 + sqrt_calculator 4 + dsp + multiply 1 + dsp +
+    # product 1 + shift 2, both dsps one longer with the pre-adder register
     latency = uart.read(ROOT_BASE + 3)
-    expected_latency = 21 + 2 * uart.read(45)
+    expected_latency = 15 + 2 * uart.read(45)
     r.check(f"pipeline latency {expected_latency} clock edges", latency == expected_latency, f"read {latency}")
 
     sweeps = [(0, 0, 65536, "radicands 0 .. 65535"),
