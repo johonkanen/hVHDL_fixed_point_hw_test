@@ -124,7 +124,8 @@ and random-range sweeps (back to back and gapped) against the models'
 checksums. On a checksum mismatch it bisects with smaller sweeps and reports
 the first wrong input.
 
-`lut_divider` (32 bits, quotient = numerator / denominator · 2¹⁶) through
+`lut_divider` (32 bits, quotient = numerator / denominator · 2¹⁶, reciprocal table of
+512 entries × 18 bits at radix 16 with an 18-bit `x_frac`, the `g_divider_*` generics) through
 `source/divider_sweep.vhd`, registers from 96:
 
 | addr      | contents                                                        |    |
@@ -137,10 +138,13 @@ the first wrong input.
 | 103       | sweep mode: bit 0 = 0 fixed numerator and denominator +1 per division, bit 0 = 1 operands from two 32-bit Galois LFSRs (x >> 1 xor 0x80200003) with the denominator shifted right by 0..31, bit 1 irregular gaps | RW |
 | 104, 105  | sweep checksums: s1 += quotient, s2 += s1                       | RO |
 | 106, 107  | ready pulses and division_by_zero results of the last command   | RO |
+| 108..111  | reciprocal table: index width, word length, radix, x_frac width | RO |
 
 `test_uart.py` checks single divisions and sweeps against a bit-exact model of
-`lut_divider_pkg.lut_divide`; the quotients are within about 2.6·10⁻⁴ of the
-exact division (16-bit reciprocal table).
+`lut_divider_pkg.lut_divide` for the table the board reports in 108..111;
+quotients above 2²⁴ are within 4.2·10⁻⁵ of the exact division (1.6·10⁻⁴ with
+the library's default 256 × 16 bit table). The 512 × 18 table takes the same
+RAM blocks as the 256 × 16 one on all three boards.
 
 `full_range_sqrt` (32 bits, root = √(radicand · 2⁻¹⁶) · 2¹⁶) through
 `source/sqrt_sweep.vhd`, registers from 112:
