@@ -49,6 +49,7 @@ Register map (source/uart_test_core.vhd) :
     101 latency    102 write N -> sweep N divisions (0 = 65536)      RO/WO
     103 sweep mode : bit 0 lfsr operands, bit 1 gaps                 RW
     104 s1   105 s2   106 ready pulses   107 division by zero count  RO
+    108 table index width  109 table word length  110 table radix  111 x_frac width  RO
 
     full_range_sqrt, 32 bit, root = sqrt(radicand * 2**-16) * 2**16
     112 radicand (also the sweep start / lfsr seed)                RW
@@ -225,19 +226,47 @@ def sqrt_model(x_frac):
     return wrap(SQRT_POINT[index] + wrap((SQRT_SLOPE[index] * fraction) >> 8, 16), 16) & 0xFFFF
 
 
-def lut_divide_model(numerator, denominator, radix, w=32):
-    """bit exact lut_divider_pkg.lut_divide"""
+_reciprocal_tables = {}
+
+
+def reciprocal_tables(index_width, word_length, radix):
+    """lut_reciprocal_pkg.make_reciprocal_point_lut / _slope_lut"""
+    key = (index_width, word_length, radix)
+    if key not in _reciprocal_tables:
+        entries, scale = 2**index_width, 2.0**radix - 1.0
+        at = lambda i: 1.0 / (0.5 * (1.0 + i / entries))
+        _reciprocal_tables[key] = ([wrap(vhdl_round(at(i) * scale), word_length) for i in range(entries)],
+                                   [wrap(vhdl_round((at(i + 1) - at(i)) * scale), word_length) for i in range(entries)])
+    return _reciprocal_tables[key]
+
+
+def reciprocal_table_model(x_frac, x_frac_width, index_width, word_length, radix):
+    """bit exact lut_reciprocal_pkg.get_reciprocal_from_lut(x_frac, point_lut, slope_lut)"""
+    points, slopes = reciprocal_tables(index_width, word_length, radix)
+    fraction_width = x_frac_width - index_width
+    index, fraction = x_frac >> fraction_width, x_frac & ((1 << fraction_width) - 1)
+    return wrap(points[index] + wrap((slopes[index] * fraction) >> fraction_width, word_length), word_length) \
+        & ((1 << word_length) - 1)
+
+
+DEFAULT_TABLE = (8, 16, 14, 16)  # index width, word length, radix, x_frac width
+
+
+def lut_divide_model(numerator, denominator, radix, w=32, table=DEFAULT_TABLE):
+    """bit exact lut_divider_pkg.lut_divide, table = (index width, word
+    length, table radix, x_frac width)"""
+    index_width, word_length, table_radix, x_frac_width = table
     if denominator == 0:
         return 0
     magnitude = abs(denominator)
     zeros = w - magnitude.bit_length()
     normalised = magnitude << zeros
-    reciprocal = reciprocal_model((normalised >> (w - 17)) & 0xFFFF)
-    product = numerator * reciprocal
+    x_frac = (normalised >> (w - 1 - x_frac_width)) & ((1 << x_frac_width) - 1)
+    product = numerator * reciprocal_table_model(x_frac, x_frac_width, index_width, word_length, table_radix)
     if denominator < 0:
         product = -product
-    extra = max(0, radix - 15)
-    return wrap((product << extra) >> (14 + w - radix + extra - zeros), w)
+    extra = max(0, radix - (table_radix + 1))
+    return wrap((product << extra) >> (table_radix + w - radix + extra - zeros), w)
 
 
 def full_range_sqrt_model(radicand, radix, w=32):
@@ -273,7 +302,7 @@ def root_sweep_model(mode, start, count, radix):
     return s1, s2
 
 
-def divider_sweep_model(mode, numerator, denominator, count, radix):
+def divider_sweep_model(mode, numerator, denominator, count, radix, table=DEFAULT_TABLE):
     """sums, division by zero count of a divider_sweep sweep"""
     n, d = numerator & 0xFFFFFFFF, denominator & 0xFFFFFFFF
     s1 = s2 = zeros = 0
@@ -283,7 +312,7 @@ def divider_sweep_model(mode, numerator, denominator, count, radix):
         else:
             divisor = wrap(d, 32)
             d = (d + 1) & 0xFFFFFFFF
-        q = lut_divide_model(wrap(n, 32), divisor, radix)
+        q = lut_divide_model(wrap(n, 32), divisor, radix, table=table)
         zeros += divisor == 0
         if mode & 1:
             n, d = galois_step(n), galois_step(d)
@@ -544,7 +573,8 @@ def divider_sweep(uart, mode, numerator, denominator, count):
 
 
 def run_lut_divider(uart, rounds, r):
-    print("lut_divider")
+    table = tuple(uart.read(DIVIDER_BASE + k) for k in (12, 13, 14, 15))
+    print(f"lut_divider, {2**table[0]} entries x {table[1]} bits at radix {table[2]}, {table[3]} bit x_frac")
     lo, hi = -2**31, 2**31 - 1
     pairs = [(1, 1), (1, -1), (-1, 1), (lo, 1), (lo, -1), (hi, lo), (lo, lo), (hi, hi), (1000, 3),
              (-1000, 7), (12345, 0), (0, 5), (5, hi), (123456789, -98765), (1, 2**30), (-77777, -3)]
@@ -553,8 +583,8 @@ def run_lut_divider(uart, rounds, r):
     wrong = []
     for n, d in pairs:
         q, dbz = divide(uart, n, d)
-        if q != lut_divide_model(n, d, QUOTIENT_RADIX) or dbz != (d == 0):
-            wrong.append(f"{n}/{d} -> {q} expected {lut_divide_model(n, d, QUOTIENT_RADIX)}")
+        if q != lut_divide_model(n, d, QUOTIENT_RADIX, table=table) or dbz != (d == 0):
+            wrong.append(f"{n}/{d} -> {q} expected {lut_divide_model(n, d, QUOTIENT_RADIX, table=table)}")
     r.check(f"{len(pairs)} single divisions incl. edge cases", not wrong, ", ".join(wrong[:3]))
 
     # normalise 2 + reciprocal_calculator 4 + dsp + multiply 1 + dsp +
@@ -572,7 +602,7 @@ def run_lut_divider(uart, rounds, r):
                        r.random.randint(1, 20000), "random seeds"))
     for mode, n, d, count, name in sweeps:
         sums, readies, zeros = divider_sweep(uart, mode, n, d, count)
-        expected_sums, expected_zeros = divider_sweep_model(mode, n, d, count, QUOTIENT_RADIX)
+        expected_sums, expected_zeros = divider_sweep_model(mode, n, d, count, QUOTIENT_RADIX, table)
         ok = sums == expected_sums and readies == count and zeros == expected_zeros
         r.check(f"sweep {name}", ok, f"{count} divisions, {readies} ready, {zeros} division by zero")
 
@@ -584,9 +614,9 @@ def run_lut_divider(uart, rounds, r):
         if d == 0:
             continue
         exact = n / d * 2**QUOTIENT_RADIX
-        if 2**12 < abs(exact) < 2**31 - 2:
-            worst = max(worst, abs(lut_divide_model(n, d, QUOTIENT_RADIX) - exact) / abs(exact))
-    print(f"        lut_divide relative error up to {worst:.2e} for quotients above 2**12")
+        if 2**20 < abs(exact) < 2**31 - 2:
+            worst = max(worst, abs(lut_divide_model(n, d, QUOTIENT_RADIX, table=table) - exact) / abs(exact))
+    print(f"        lut_divide relative error up to {worst:.2e} for quotients above 2**20")
 
 
 ROOT_BASE = 112

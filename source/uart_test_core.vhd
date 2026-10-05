@@ -52,7 +52,8 @@
 -- lut_divider, 32 bit numerator / denominator, quotient radix 16, own
 -- fixed_dsps with the same pre-add option :
 --
---   96..107 : see divider_sweep.vhd
+--   96..111 : see divider_sweep.vhd, the reciprocal table from the
+--             g_divider_* generics
 --
 -- full_range_sqrt, 32 bit radicand and root, radix 16, own fixed_dsps with
 -- the same pre-add option :
@@ -83,6 +84,12 @@ entity uart_test_core is
         -- the register on the requests to the calculators', the divider's
         -- and the square root's fixed_dsps, off takes a clock off each
         ;g_dsp_request_register : boolean := true
+        -- lut_divider's reciprocal table, the default fills the ram blocks
+        -- the 256 x 16 bit table already takes on all three boards
+        ;g_divider_index_width       : natural := 9
+        ;g_divider_table_word_length : natural := 18
+        ;g_divider_table_radix       : natural := 16
+        ;g_divider_x_frac_width      : natural := 18
     );
     port (
         clock      : in std_logic
@@ -163,8 +170,8 @@ architecture rtl of uart_test_core is
     signal sine_request_value : unsigned(15 downto 0);
     signal sine_request       : std_logic;
 
-    signal reciprocal_in       : reciprocal_calculator_in_record;
-    signal reciprocal_out      : reciprocal_calculator_out_record;
+    signal reciprocal_in       : reciprocal_calculator_in_record(x_frac(15 downto 0));
+    signal reciprocal_out      : reciprocal_calculator_out_record(y(15 downto 0));
     signal reciprocal_dsp_in   : dsp_in_subtype;
     signal reciprocal_dsp_out  : dsp_out_subtype;
     signal reciprocal_request_value : unsigned(15 downto 0);
@@ -458,6 +465,10 @@ begin
     generic map (
         g_base_address      => 96
         ,g_quotient_radix   => 16
+        ,g_index_width       => g_divider_index_width
+        ,g_table_word_length => g_divider_table_word_length
+        ,g_table_radix       => g_divider_table_radix
+        ,g_x_frac_width      => g_divider_x_frac_width
         ,g_pre_add_register => g_dsp_pre_add_register
         ,g_ram_output_register => g_ram_output_register
         ,g_dsp_request_register => g_dsp_request_register

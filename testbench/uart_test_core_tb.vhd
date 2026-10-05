@@ -21,6 +21,11 @@ entity uart_test_core_tb is
       ;pre_add_register : boolean := false
       ;ram_output_register : boolean := true
       ;dsp_request_register : boolean := true
+      -- the core's lut_divider table (its g_divider_* defaults)
+      ;divider_index_width       : natural := 9
+      ;divider_table_word_length : natural := 18
+      ;divider_table_radix       : natural := 16
+      ;divider_x_frac_width      : natural := 18
   );
 end;
 
@@ -36,6 +41,9 @@ architecture vunit_simulation of uart_test_core_tb is
     signal from_fpga       : std_logic;
 
     type byte_array is array (natural range <>) of std_logic_vector(7 downto 0);
+
+    constant divider_point_lut : reciprocal_lut_array := make_reciprocal_point_lut(divider_index_width, divider_table_word_length, divider_table_radix);
+    constant divider_slope_lut : reciprocal_lut_array := make_reciprocal_slope_lut(divider_index_width, divider_table_word_length, divider_table_radix);
 
     -- the bytes the fpga sends, a ring buffer indexed by received_count
     signal received_bytes : byte_array(0 to 1023);
@@ -152,7 +160,8 @@ begin
         end galois_step;
 
         procedure check_division (numerator : integer; denominator : integer) is
-            constant expected : signed(31 downto 0) := lut_divide(to_signed(numerator, 32), to_signed(denominator, 32), quotient_radix);
+            constant expected : signed(31 downto 0) := lut_divide(to_signed(numerator, 32), to_signed(denominator, 32), quotient_radix
+                , divider_point_lut, divider_slope_lut, divider_table_radix, divider_x_frac_width);
         begin
             write_register(divider_base + 0, numerator);
             write_register(divider_base + 1, denominator);
@@ -178,7 +187,8 @@ begin
                 else
                     divisor := shift_right(signed(d), to_integer(unsigned(n(4 downto 0))));
                 end if;
-                q := lut_divide(signed(n), divisor, quotient_radix);
+                q := lut_divide(signed(n), divisor, quotient_radix
+                    , divider_point_lut, divider_slope_lut, divider_table_radix, divider_x_frac_width);
                 if divisor = 0 then
                     zeros := zeros + 1;
                 end if;
@@ -363,6 +373,10 @@ begin
         check_divider_sweep(mode => 0, numerator => 100000, denominator => -3000, count => 6000);
         check_divider_sweep(mode => 1, numerator => 16#1234567#, denominator => 16#7654321#, count => 2**16);
         check_divider_sweep(mode => 3, numerator => 16#1357#, denominator => 16#2468ace#, count => 20000);
+        check_register(divider_base + 12, divider_index_width);
+        check_register(divider_base + 13, divider_table_word_length);
+        check_register(divider_base + 14, divider_table_radix);
+        check_register(divider_base + 15, divider_x_frac_width);
 
         -- full_range_sqrt
         check_root(x"00000000");
@@ -406,6 +420,10 @@ begin
         ,g_dsp_pre_add_register => pre_add_register
         ,g_ram_output_register  => ram_output_register
         ,g_dsp_request_register => dsp_request_register
+        ,g_divider_index_width       => divider_index_width
+        ,g_divider_table_word_length => divider_table_word_length
+        ,g_divider_table_radix       => divider_table_radix
+        ,g_divider_x_frac_width      => divider_x_frac_width
     )
     port map (
         clock      => simulator_clock

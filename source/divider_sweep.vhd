@@ -26,6 +26,10 @@
 --   +9  : sweep sum of the sums, s2 += s1                        RO
 --   +10 : ready pulses since the last command                    RO
 --   +11 : division_by_zero results since the last command        RO
+--   +12 : reciprocal table index width (g_index_width)           RO
+--   +13 : reciprocal table word length (g_table_word_length)     RO
+--   +14 : reciprocal table radix (g_table_radix)                 RO
+--   +15 : x_frac width (g_x_frac_width)                          RO
 ------------------------------------------------------------------------
 library ieee;
     use ieee.std_logic_1164.all;
@@ -38,6 +42,10 @@ entity divider_sweep is
     generic (
         g_base_address      : natural
         ;g_quotient_radix   : natural
+        ;g_index_width       : natural := 8
+        ;g_table_word_length : natural := 16
+        ;g_table_radix       : natural := 14
+        ;g_x_frac_width      : natural := 16
         ;g_pre_add_register : boolean
         ;g_ram_output_register : boolean := true
         ;g_dsp_request_register : boolean := true
@@ -102,6 +110,10 @@ begin
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 9, std_logic_vector(sum2));
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 10, std_logic_vector(ready_count));
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 11, std_logic_vector(division_by_zero_count));
+            connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 12, std_logic_vector(to_unsigned(g_index_width, 32)));
+            connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 13, std_logic_vector(to_unsigned(g_table_word_length, 32)));
+            connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 14, std_logic_vector(to_unsigned(g_table_radix, 32)));
+            connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 15, std_logic_vector(to_unsigned(g_x_frac_width, 32)));
 
             ------------------------------
             gap_lfsr <= gap_lfsr(14 downto 0) & (gap_lfsr(15) xor gap_lfsr(13) xor gap_lfsr(12) xor gap_lfsr(10));
@@ -191,6 +203,10 @@ begin
     u_lut_divider : entity work.lut_divider
     generic map (
         g_quotient_radix    => g_quotient_radix
+        ,g_index_width       => g_index_width
+        ,g_table_word_length => g_table_word_length
+        ,g_table_radix       => g_table_radix
+        ,g_x_frac_width      => g_x_frac_width
         ,g_pre_add_register => g_pre_add_register
         ,g_ram_output_register => g_ram_output_register
         ,g_dsp_request_register => g_dsp_request_register
