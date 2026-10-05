@@ -26,6 +26,11 @@ entity uart_test_core_tb is
       ;divider_table_word_length : natural := 18
       ;divider_table_radix       : natural := 16
       ;divider_x_frac_width      : natural := 18
+      -- the core's full_range_sqrt table (its g_root_* defaults)
+      ;root_index_width       : natural := 9
+      ;root_table_word_length : natural := 18
+      ;root_table_radix       : natural := 17
+      ;root_x_frac_width      : natural := 18
   );
 end;
 
@@ -44,6 +49,8 @@ architecture vunit_simulation of uart_test_core_tb is
 
     constant divider_point_lut : reciprocal_lut_array := make_reciprocal_point_lut(divider_index_width, divider_table_word_length, divider_table_radix);
     constant divider_slope_lut : reciprocal_lut_array := make_reciprocal_slope_lut(divider_index_width, divider_table_word_length, divider_table_radix);
+    constant root_point_lut : sqrt_lut_array := make_sqrt_point_lut(root_index_width, root_table_word_length, root_table_radix);
+    constant root_slope_lut : sqrt_lut_array := make_sqrt_slope_lut(root_index_width, root_table_word_length, root_table_radix);
 
     -- the bytes the fpga sends, a ring buffer indexed by received_count
     signal received_bytes : byte_array(0 to 1023);
@@ -221,7 +228,8 @@ begin
         begin
             write_register(root_base + 0, radicand);
             write_register(root_base + 1, 1);
-            check_register(root_base + 2, std_logic_vector(get_full_range_sqrt(unsigned(radicand), root_radix)));
+            check_register(root_base + 2, std_logic_vector(get_full_range_sqrt(unsigned(radicand), root_radix
+                , root_point_lut, root_slope_lut, root_table_radix, root_x_frac_width)));
         end check_root;
 
         procedure check_root_sweep (mode : natural; start : std_logic_vector(31 downto 0); count : natural) is
@@ -238,7 +246,8 @@ begin
                     radicand := shift_right(unsigned(x), to_integer(unsigned(x(4 downto 0))));
                     x := galois_step(x);
                 end if;
-                sum1 := sum1 + get_full_range_sqrt(radicand, root_radix);
+                sum1 := sum1 + get_full_range_sqrt(radicand, root_radix
+                    , root_point_lut, root_slope_lut, root_table_radix, root_x_frac_width);
                 sum2 := sum2 + sum1;
             end loop;
             write_register(root_base + 0, start);
@@ -389,6 +398,10 @@ begin
         check_root_sweep(mode => 0, start => x"00000000", count => 6000);
         check_root_sweep(mode => 1, start => x"01234567", count => 2**16);
         check_root_sweep(mode => 3, start => x"0badcafe", count => 20000);
+        check_register(root_base + 9, root_index_width);
+        check_register(root_base + 10, root_table_word_length);
+        check_register(root_base + 11, root_table_radix);
+        check_register(root_base + 12, root_x_frac_width);
 
         test_runner_cleanup(runner);
         wait;
@@ -424,6 +437,10 @@ begin
         ,g_divider_table_word_length => divider_table_word_length
         ,g_divider_table_radix       => divider_table_radix
         ,g_divider_x_frac_width      => divider_x_frac_width
+        ,g_root_index_width       => root_index_width
+        ,g_root_table_word_length => root_table_word_length
+        ,g_root_table_radix       => root_table_radix
+        ,g_root_x_frac_width      => root_x_frac_width
     )
     port map (
         clock      => simulator_clock

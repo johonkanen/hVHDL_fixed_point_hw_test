@@ -58,7 +58,8 @@
 -- full_range_sqrt, 32 bit radicand and root, radix 16, own fixed_dsps with
 -- the same pre-add option :
 --
---   112..120 : see sqrt_sweep.vhd
+--   112..124 : see sqrt_sweep.vhd, the sqrt table from the g_root_*
+--              generics
 --
 -- fixed_dsp recomputes its result register on every clock, the core drives
 -- init_fixed_dsp while idle so an accumulate only carries across back to
@@ -90,6 +91,12 @@ entity uart_test_core is
         ;g_divider_table_word_length : natural := 18
         ;g_divider_table_radix       : natural := 16
         ;g_divider_x_frac_width      : natural := 18
+        -- full_range_sqrt's sqrt table, the default fills the ram blocks the
+        -- 256 x 16 bit table already takes on all three boards
+        ;g_root_index_width       : natural := 9
+        ;g_root_table_word_length : natural := 18
+        ;g_root_table_radix       : natural := 17
+        ;g_root_x_frac_width      : natural := 18
     );
     port (
         clock      : in std_logic
@@ -177,8 +184,8 @@ architecture rtl of uart_test_core is
     signal reciprocal_request_value : unsigned(15 downto 0);
     signal reciprocal_request  : std_logic;
 
-    signal sqrt_in            : sqrt_calculator_in_record;
-    signal sqrt_out           : sqrt_calculator_out_record;
+    signal sqrt_in            : sqrt_calculator_in_record(x_frac(15 downto 0));
+    signal sqrt_out           : sqrt_calculator_out_record(y(15 downto 0));
     signal sqrt_dsp_in        : dsp_in_subtype;
     signal sqrt_dsp_out       : dsp_out_subtype;
     signal sqrt_request_value : unsigned(15 downto 0);
@@ -485,6 +492,10 @@ begin
     generic map (
         g_base_address      => 112
         ,g_radix            => 16
+        ,g_index_width       => g_root_index_width
+        ,g_table_word_length => g_root_table_word_length
+        ,g_table_radix       => g_root_table_radix
+        ,g_x_frac_width      => g_root_x_frac_width
         ,g_pre_add_register => g_dsp_pre_add_register
         ,g_ram_output_register => g_ram_output_register
         ,g_dsp_request_register => g_dsp_request_register

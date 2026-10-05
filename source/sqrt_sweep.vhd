@@ -21,6 +21,10 @@
 --   +6 : sweep sum of the roots, s1 += root                       RO
 --   +7 : sweep sum of the sums, s2 += s1                          RO
 --   +8 : ready pulses since the last command                      RO
+--   +9 : sqrt table index width (g_index_width)                   RO
+--   +10: sqrt table word length (g_table_word_length)             RO
+--   +11: sqrt table radix (g_table_radix)                         RO
+--   +12: x_frac width (g_x_frac_width)                            RO
 ------------------------------------------------------------------------
 library ieee;
     use ieee.std_logic_1164.all;
@@ -33,6 +37,10 @@ entity sqrt_sweep is
     generic (
         g_base_address      : natural
         ;g_radix            : natural
+        ;g_index_width       : natural := 8
+        ;g_table_word_length : natural := 16
+        ;g_table_radix       : natural := 15
+        ;g_x_frac_width      : natural := 16
         ;g_pre_add_register : boolean
         ;g_ram_output_register : boolean := true
         ;g_dsp_request_register : boolean := true
@@ -90,6 +98,10 @@ begin
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 6, std_logic_vector(sum1));
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 7, std_logic_vector(sum2));
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 8, std_logic_vector(ready_count));
+            connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 9, std_logic_vector(to_unsigned(g_index_width, 32)));
+            connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 10, std_logic_vector(to_unsigned(g_table_word_length, 32)));
+            connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 11, std_logic_vector(to_unsigned(g_table_radix, 32)));
+            connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 12, std_logic_vector(to_unsigned(g_x_frac_width, 32)));
 
             ------------------------------
             gap_lfsr <= gap_lfsr(14 downto 0) & (gap_lfsr(15) xor gap_lfsr(13) xor gap_lfsr(12) xor gap_lfsr(10));
@@ -169,6 +181,10 @@ begin
     u_full_range_sqrt : entity work.full_range_sqrt
     generic map (
         g_radix             => g_radix
+        ,g_index_width       => g_index_width
+        ,g_table_word_length => g_table_word_length
+        ,g_table_radix       => g_table_radix
+        ,g_x_frac_width      => g_x_frac_width
         ,g_pre_add_register => g_pre_add_register
         ,g_ram_output_register => g_ram_output_register
         ,g_dsp_request_register => g_dsp_request_register

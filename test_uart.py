@@ -57,6 +57,7 @@ Register map (source/uart_test_core.vhd) :
     116 write N -> sweep N roots (0 = 65536)                         WO
     117 sweep mode : bit 0 lfsr radicands, bit 1 gaps               RW
     118 s1   119 s2   120 ready pulses                              RO
+    121 table index width  122 table word length  123 table radix  124 x_frac width  RO
     base +0 input   +1 write -> one request   +2 result               RW/WO/RO
          +3 latency, request at the input to ready, clock edges     RO
          +4 write N -> sweep N inputs from +5, one per clock (0 = 65536) WO
@@ -269,24 +270,54 @@ def lut_divide_model(numerator, denominator, radix, w=32, table=DEFAULT_TABLE):
     return wrap((product << extra) >> (table_radix + w - radix + extra - zeros), w)
 
 
-def full_range_sqrt_model(radicand, radix, w=32):
-    """bit exact full_range_sqrt_pkg.get_full_range_sqrt"""
+_sqrt_tables = {}
+
+
+def sqrt_tables(index_width, word_length, radix):
+    """lut_sqrt_pkg.make_sqrt_point_lut / _slope_lut"""
+    key = (index_width, word_length, radix)
+    if key not in _sqrt_tables:
+        entries, scale = 2**index_width, 2.0**radix - 1.0
+        at = lambda i: math.sqrt(0.5 * (1.0 + i / entries))
+        _sqrt_tables[key] = ([wrap(vhdl_round(at(i) * scale), word_length) for i in range(entries)],
+                             [wrap(vhdl_round((at(i + 1) - at(i)) * scale), word_length) for i in range(entries)])
+    return _sqrt_tables[key]
+
+
+def sqrt_table_model(x_frac, x_frac_width, index_width, word_length, radix):
+    """bit exact lut_sqrt_pkg.get_sqrt_from_lut(x_frac, point_lut, slope_lut)"""
+    points, slopes = sqrt_tables(index_width, word_length, radix)
+    fraction_width = x_frac_width - index_width
+    index, fraction = x_frac >> fraction_width, x_frac & ((1 << fraction_width) - 1)
+    return wrap(points[index] + wrap((slopes[index] * fraction) >> fraction_width, word_length), word_length) \
+        & ((1 << word_length) - 1)
+
+
+DEFAULT_SQRT_TABLE = (8, 16, 15, 16)  # index width, word length, radix, x_frac width
+
+
+def full_range_sqrt_model(radicand, radix, w=32, table=DEFAULT_SQRT_TABLE):
+    """bit exact full_range_sqrt_pkg.get_full_range_sqrt, table = (index
+    width, word length, table radix, x_frac width)"""
+    index_width, word_length, table_radix, x_frac_width = table
     if radicand == 0:
         return 0
     zeros = w - radicand.bit_length()
     normalised = radicand << zeros
+    x_frac = (normalised >> (w - 1 - x_frac_width)) & ((1 << x_frac_width) - 1)
     exponent = w - zeros + radix
     multiplier = 46341 if exponent % 2 else 32768
-    product = sqrt_model((normalised >> (w - 17)) & 0xFFFF) * multiplier
-    extra = max(0, (w + radix) // 2 - 30)
-    return ((product << extra) >> (30 + extra - exponent // 2)) & ((1 << w) - 1)
+    product = sqrt_table_model(x_frac, x_frac_width, index_width, word_length, table_radix) * multiplier
+    product_radix = table_radix + 15
+    extra = max(0, (w + radix) // 2 - product_radix)
+    return ((product << extra) >> (product_radix + extra - exponent // 2)) & ((1 << w) - 1)
 
 
 def galois_step(x):
     return (x >> 1) ^ (0x80200003 if x & 1 else 0)
 
 
-def root_sweep_model(mode, start, count, radix):
+def root_sweep_model(mode, start, count, radix, table=DEFAULT_SQRT_TABLE):
     """sums of a sqrt_sweep sweep"""
     x = start & 0xFFFFFFFF
     s1 = s2 = 0
@@ -297,7 +328,7 @@ def root_sweep_model(mode, start, count, radix):
         else:
             radicand = x
             x = (x + 1) & 0xFFFFFFFF
-        s1 = (s1 + full_range_sqrt_model(radicand, radix)) & 0xFFFFFFFF
+        s1 = (s1 + full_range_sqrt_model(radicand, radix, table=table)) & 0xFFFFFFFF
         s2 = (s2 + s1) & 0xFFFFFFFF
     return s1, s2
 
@@ -641,12 +672,13 @@ def root_sweep(uart, mode, start, count):
 
 
 def run_full_range_sqrt(uart, rounds, r):
-    print("full_range_sqrt")
+    table = tuple(uart.read(ROOT_BASE + k) for k in (9, 10, 11, 12))
+    print(f"full_range_sqrt, {2**table[0]} entries x {table[1]} bits at radix {table[2]}, {table[3]} bit x_frac")
     radicands = [0, 1, 2, 3, 4, 1 << 16, 2 << 16, 4 << 16, 1 << 31, 0xFFFFFFFF, 0x12345678, 1 << 30]
     for _ in range(max(16, rounds // 8)):
         radicands.append(r.random.getrandbits(32) >> r.random.randint(0, 31))
-    wrong = [f"{x:#x} -> {y} expected {full_range_sqrt_model(x, ROOT_RADIX)}"
-             for x in radicands if (y := square_root(uart, x)) != full_range_sqrt_model(x, ROOT_RADIX)]
+    wrong = [f"{x:#x} -> {y} expected {full_range_sqrt_model(x, ROOT_RADIX, table=table)}"
+             for x in radicands if (y := square_root(uart, x)) != full_range_sqrt_model(x, ROOT_RADIX, table=table)]
     r.check(f"{len(radicands)} single roots incl. edge cases", not wrong, ", ".join(wrong[:3]))
 
     # normalise 2 + sqrt_calculator 4 + dsp + multiply 1 + dsp + shift 2,
@@ -663,16 +695,16 @@ def run_full_range_sqrt(uart, rounds, r):
         sweeps.append((r.random.choice([1, 3]), r.random.getrandbits(31) | 1, r.random.randint(1, 20000), "random seed"))
     for mode, start, count, name in sweeps:
         sums, readies = root_sweep(uart, mode, start, count)
-        ok = sums == root_sweep_model(mode, start, count, ROOT_RADIX) and readies == count
+        ok = sums == root_sweep_model(mode, start, count, ROOT_RADIX, table) and readies == count
         r.check(f"sweep {name}", ok, f"{count} roots, {readies} ready")
 
     worst = 0.0
     for _ in range(20000):
         x = r.random.getrandbits(32) >> r.random.randint(0, 31)
         exact = math.sqrt(x / 2**ROOT_RADIX) * 2**ROOT_RADIX
-        if exact > 2**12:
-            worst = max(worst, abs(full_range_sqrt_model(x, ROOT_RADIX) - exact) / exact)
-    print(f"        full_range_sqrt relative error up to {worst:.2e} for roots above 2**12")
+        if exact > 2**20:
+            worst = max(worst, abs(full_range_sqrt_model(x, ROOT_RADIX, table=table) - exact) / exact)
+    print(f"        full_range_sqrt relative error up to {worst:.2e} for roots above 2**20")
 
 
 def main():

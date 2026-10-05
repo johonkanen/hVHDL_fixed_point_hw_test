@@ -146,7 +146,8 @@ quotients above 2²⁴ are within 4.2·10⁻⁵ of the exact division (1.6·10�
 the library's default 256 × 16 bit table). The 512 × 18 table takes the same
 RAM blocks as the 256 × 16 one on all three boards.
 
-`full_range_sqrt` (32 bits, root = √(radicand · 2⁻¹⁶) · 2¹⁶) through
+`full_range_sqrt` (32 bits, root = √(radicand · 2⁻¹⁶) · 2¹⁶, sqrt table of 512
+entries × 18 bits at radix 17 with an 18-bit `x_frac`, the `g_root_*` generics) through
 `source/sqrt_sweep.vhd`, registers from 112:
 
 | addr      | contents                                                        |    |
@@ -159,10 +160,13 @@ RAM blocks as the 256 × 16 one on all three boards.
 | 117       | sweep mode: bit 0 = 0 radicand +1 per root, bit 0 = 1 radicands from a 32-bit Galois LFSR (x >> 1 xor 0x80200003) shifted right by their own low 5 bits, bit 1 irregular gaps | RW |
 | 118, 119  | sweep checksums: s1 += root, s2 += s1                           | RO |
 | 120       | ready pulses of the last command                                | RO |
+| 121..124  | sqrt table: index width, word length, radix, x_frac width       | RO |
 
 `test_uart.py` checks single roots and sweeps against a bit-exact model of
-`full_range_sqrt_pkg.get_full_range_sqrt`; the roots are within about
-2.6·10⁻⁴ of the exact square root (16-bit sqrt table).
+`full_range_sqrt_pkg.get_full_range_sqrt` for the table the board reports in
+121..124; roots above 2²⁰ are within 2.7·10⁻⁵ of the exact square root
+(1.1·10⁻⁴ with the library's default 256 × 16 bit table). The 512 × 18 table
+takes the same RAM blocks as the 256 × 16 one on all three boards.
 
 `fixed_dsp(rtl)` recomputes its result register on every clock and the core
 drives `init_fixed_dsp` while idle, so an accumulate only carries over
