@@ -27,6 +27,7 @@ begin
         g_clock_divider       => 25
         ,g_board_id           => 3
         ,g_clock_frequency_hz => 120_000_000
+        ,g_ram_output_register => false
     )
     port map (
         clock      => main_clock

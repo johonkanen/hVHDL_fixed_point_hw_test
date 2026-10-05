@@ -48,6 +48,7 @@ begin
         ,g_board_id             => 1
         ,g_clock_frequency_hz   => 120_000_000
         ,g_dsp_pre_add_register => true
+        ,g_ram_output_register  => false
     )
     port map (
         clock      => main_clock

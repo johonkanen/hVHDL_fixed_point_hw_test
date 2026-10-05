@@ -52,5 +52,7 @@ lib.add_source_files(ROOT / "testbench/uart_test_core_tb.vhd")
 core_tb = lib.test_bench("uart_test_core_tb")
 core_tb.add_config(name="dsp", generics=dict(pre_add_register=False))
 core_tb.add_config(name="dsp_pre_add_register", generics=dict(pre_add_register=True))
+core_tb.add_config(name="no_ram_output_register", generics=dict(ram_output_register=False))
+core_tb.add_config(name="dsp_pre_add_register_no_ram_output_register", generics=dict(pre_add_register=True, ram_output_register=False))
 
 VU.main()

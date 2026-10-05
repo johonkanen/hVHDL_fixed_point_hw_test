@@ -19,6 +19,7 @@ entity uart_test_core_tb is
   generic (
       runner_cfg : string
       ;pre_add_register : boolean := false
+      ;ram_output_register : boolean := true
   );
 end;
 
@@ -304,6 +305,7 @@ begin
         check_register(40, 0);
         check_register(41, 2 + boolean'pos(pre_add_register)); -- fixed_dsp(rtl) pipeline depth
         check_register(45, boolean'pos(pre_add_register));
+        check_register(46, boolean'pos(ram_output_register));
         check_register(42, 1);
 
         -- -((a + d) * b - c) = -((5 + 1) * 7 - 3) = -39, 64 bit result
@@ -341,7 +343,7 @@ begin
             for i in 0 to 15 loop
                 check_single(calculator_bases(b), i * 4099);
             end loop;
-            check_register(calculator_bases(b) + 3, 6 + boolean'pos(pre_add_register));
+            check_register(calculator_bases(b) + 3, 5 + boolean'pos(ram_output_register) + boolean'pos(pre_add_register));
 
             check_sweep(calculator_bases(b), start => 0, count => 2**16, mode => 0);
             check_sweep(calculator_bases(b), start => 0, count => 2**16, mode => 1);
@@ -400,6 +402,7 @@ begin
         ,g_board_id           => 7
         ,g_clock_frequency_hz => 120_000_000
         ,g_dsp_pre_add_register => pre_add_register
+        ,g_ram_output_register  => ram_output_register
     )
     port map (
         clock      => simulator_clock

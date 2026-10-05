@@ -92,6 +92,7 @@ reference 0.
 | 43     | write → accumulator reset request                                | WO |
 | 44     | dsp word length                                                  | RO |
 | 45     | 1 when the pre-adder is registered (`g_dsp_pre_add_register`)    | RO |
+| 46     | 1 when the lookup table RAMs have their output register (`g_ram_output_register`) | RO |
 
 `sine_calculator`, `reciprocal_calculator` and `sqrt_calculator`, each with its own `fixed_dsp`
 (same width and pre-adder option), tested through `source/lut_sweep.vhd`.
@@ -108,7 +109,7 @@ Both take a 16-bit input and give a 16-bit result:
 | base + 0 | input                                                            | RW |
 | base + 1 | write → one request for the input in base + 0                    | WO |
 | base + 2 | last result, sign extended (sine) or zero extended (1/x, √x)     | RO |
-| base + 3 | clock edges from the request at the input to ready (6, or 7 with the pre-adder registered) | RO |
+| base + 3 | clock edges from the request at the input to ready: 5 + pre-adder register + RAM output register | RO |
 | base + 4 | write N → sweep N inputs from base + 5 upwards, one per clock (0 = 65536) | WO |
 | base + 5 | sweep start input                                                | RW |
 | base + 6, 7 | sweep checksums: s1 += result, s2 += s1                       | RO |
@@ -130,7 +131,7 @@ the first wrong input.
 | 96, 97    | numerator, denominator (also the sweep seeds)                   | RW |
 | 98        | write → one division                                            | WO |
 | 99, 100   | last quotient, last division_by_zero                            | RO |
-| 101       | clock edges from the request to ready (13, or 15 with the pre-adder registered) | RO |
+| 101       | clock edges from the request to ready: 12 + 2 × pre-adder register + RAM output register | RO |
 | 102       | write N → sweep N divisions, one per clock (0 = 65536)          | WO |
 | 103       | sweep mode: bit 0 = 0 fixed numerator and denominator +1 per division, bit 0 = 1 operands from two 32-bit Galois LFSRs (x >> 1 xor 0x80200003) with the denominator shifted right by 0..31, bit 1 irregular gaps | RW |
 | 104, 105  | sweep checksums: s1 += quotient, s2 += s1                       | RO |
@@ -148,7 +149,7 @@ exact division (16-bit reciprocal table).
 | 112       | radicand (also the sweep start / LFSR seed)                     | RW |
 | 113       | write → one square root                                         | WO |
 | 114       | last root                                                       | RO |
-| 115       | clock edges from the request to ready (13, or 15 with the pre-adder registered) | RO |
+| 115       | clock edges from the request to ready: 12 + 2 × pre-adder register + RAM output register | RO |
 | 116       | write N → sweep N roots, one per clock (0 = 65536)              | WO |
 | 117       | sweep mode: bit 0 = 0 radicand +1 per root, bit 0 = 1 radicands from a 32-bit Galois LFSR (x >> 1 xor 0x80200003) shifted right by their own low 5 bits, bit 1 irregular gaps | RW |
 | 118, 119  | sweep checksums: s1 += root, s2 += s1                           | RO |
@@ -177,6 +178,11 @@ operands with every flag combination and bursts of up to 300.
 * **`ti60evm/build.sh program` checks that the EVM's FT4232H is attached.**
   Without it, Efinity's programmer falls back to any FTDI device it finds and
   drives JTAG over its pins, e.g. the Alchitry's UART channel.
+* **All three boards drop the lookup table RAMs' output register**
+  (`g_ram_output_register => false`, `dual_port_ram`'s `g_output_register`),
+  which takes a clock off every calculator, the divider and the square root:
+  5 and 12 clocks on the AXC3000 and Ti60, 6 and 14 on the Alchitry with its
+  pre-adder register. The Alchitry keeps +0.13 ns of setup slack at 120 MHz.
 * **Ti60 EVM needs `infer-sync-set-reset` off** in `ti60evm/uart_test.xml`.
   With Efinity 2026.1's default (on), the 32×32 product is wrong for most
   operands (2.5 × 1.5 gives 0) and an accumulator reset reads back 1. The
