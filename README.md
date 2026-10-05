@@ -122,6 +122,24 @@ and random-range sweeps (back to back and gapped) against the models'
 checksums. On a checksum mismatch it bisects with smaller sweeps and reports
 the first wrong input.
 
+`lut_divider` (32 bits, quotient = numerator / denominator · 2¹⁶) through
+`source/divider_sweep.vhd`, registers from 96:
+
+| addr      | contents                                                        |    |
+|----------:|-----------------------------------------------------------------|----|
+| 96, 97    | numerator, denominator (also the sweep seeds)                   | RW |
+| 98        | write → one division                                            | WO |
+| 99, 100   | last quotient, last division_by_zero                            | RO |
+| 101       | clock edges from the request to ready (21, or 23 with the pre-adder registered) | RO |
+| 102       | write N → sweep N divisions, one per clock (0 = 65536)          | WO |
+| 103       | sweep mode: bit 0 = 0 fixed numerator and denominator +1 per division, bit 0 = 1 operands from two 32-bit Galois LFSRs (x >> 1 xor 0x80200003) with the denominator shifted right by 0..31, bit 1 irregular gaps | RW |
+| 104, 105  | sweep checksums: s1 += quotient, s2 += s1                       | RO |
+| 106, 107  | ready pulses and division_by_zero results of the last command   | RO |
+
+`test_uart.py` checks single divisions and sweeps against a bit-exact model of
+`lut_divider_pkg.lut_divide`; the quotients are within about 2.6·10⁻⁴ of the
+exact division (16-bit reciprocal table).
+
 `fixed_dsp(rtl)` recomputes its result register on every clock and the core
 drives `init_fixed_dsp` while idle, so an accumulate only carries over
 between the back-to-back requests of one burst (register 38).

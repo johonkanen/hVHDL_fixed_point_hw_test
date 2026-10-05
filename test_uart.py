@@ -40,6 +40,13 @@ Register map (source/uart_test_core.vhd) :
     48.. sine_calculator, angle (fraction of a turn) -> signed sine
     64.. reciprocal_calculator, x_frac (x = 0.5 + x_frac/2**17) -> 1/x
     80.. sqrt_calculator, x_frac (x = 0.5 + x_frac/2**17) -> sqrt(x)
+
+    lut_divider, 32 bit, quotient = numerator / denominator * 2**16
+    96 numerator   97 denominator (also the lfsr seeds)            RW
+    98 write -> one division   99 quotient   100 division by zero    WO/RO/RO
+    101 latency    102 write N -> sweep N divisions (0 = 65536)      RO/WO
+    103 sweep mode : bit 0 lfsr operands, bit 1 gaps                 RW
+    104 s1   105 s2   106 ready pulses   107 division by zero count  RO
     base +0 input   +1 write -> one request   +2 result               RW/WO/RO
          +3 latency, request at the input to ready, clock edges     RO
          +4 write N -> sweep N inputs from +5, one per clock (0 = 65536) WO
@@ -196,6 +203,44 @@ def sqrt_model(x_frac):
     return wrap(SQRT_POINT[index] + wrap((SQRT_SLOPE[index] * fraction) >> 8, 16), 16) & 0xFFFF
 
 
+def lut_divide_model(numerator, denominator, radix, w=32):
+    """bit exact lut_divider_pkg.lut_divide"""
+    if denominator == 0:
+        return 0
+    magnitude = abs(denominator)
+    zeros = w - magnitude.bit_length()
+    normalised = magnitude << zeros
+    reciprocal = reciprocal_model((normalised >> (w - 17)) & 0xFFFF)
+    product = numerator * reciprocal
+    if denominator < 0:
+        product = -product
+    extra = max(0, radix - 15)
+    return wrap((product << extra) >> (14 + w - radix + extra - zeros), w)
+
+
+def galois_step(x):
+    return (x >> 1) ^ (0x80200003 if x & 1 else 0)
+
+
+def divider_sweep_model(mode, numerator, denominator, count, radix):
+    """sums, division by zero count of a divider_sweep sweep"""
+    n, d = numerator & 0xFFFFFFFF, denominator & 0xFFFFFFFF
+    s1 = s2 = zeros = 0
+    for _ in range(count):
+        if mode & 1:
+            divisor = wrap(d, 32) >> (n & 0x1F)
+        else:
+            divisor = wrap(d, 32)
+            d = (d + 1) & 0xFFFFFFFF
+        q = lut_divide_model(wrap(n, 32), divisor, radix)
+        zeros += divisor == 0
+        if mode & 1:
+            n, d = galois_step(n), galois_step(d)
+        s1 = (s1 + q) & 0xFFFFFFFF
+        s2 = (s2 + s1) & 0xFFFFFFFF
+    return (s1, s2), zeros
+
+
 # base address, model, input edge cases
 CALCULATORS = {
     "sine_calculator": (48, sine_model, [0, 1, 63, 64, 0x3FFF, 0x4000, 0x4001, 0x7FFF, 0x8000, 0xBFFF, 0xC000, 0xFFFF]),
@@ -286,6 +331,7 @@ def run(uart, board, rounds, r):
     run_fixed_dsp(uart, rounds, r)
     for name, (base, model, edges) in CALCULATORS.items():
         run_lut_calculator(uart, name, base, model, edges, rounds, r)
+    run_lut_divider(uart, rounds, r)
 
     uart.uart.reset_input_buffer()
     time.sleep(0.05)
@@ -420,6 +466,75 @@ def run_lut_calculator(uart, name, base, model, edges, rounds, r):
             x = first_wrong_input(uart, base, model, start, count, mode)
             detail += f", first wrong input {x}: {lut_request(uart, base, x)} expected {model(x)}"
         r.check(f"sweep {sweep_name}", ok, detail)
+
+
+DIVIDER_BASE = 96
+QUOTIENT_RADIX = 16
+
+
+def divide(uart, numerator, denominator):
+    uart.write(DIVIDER_BASE + 0, numerator & 0xFFFFFFFF)
+    uart.write(DIVIDER_BASE + 1, denominator & 0xFFFFFFFF)
+    uart.write(DIVIDER_BASE + 2, 1)
+    return wrap(uart.read(DIVIDER_BASE + 3), 32), uart.read(DIVIDER_BASE + 4)
+
+
+def divider_sweep(uart, mode, numerator, denominator, count):
+    uart.write(DIVIDER_BASE + 0, numerator & 0xFFFFFFFF)
+    uart.write(DIVIDER_BASE + 1, denominator & 0xFFFFFFFF)
+    uart.write(DIVIDER_BASE + 7, mode)
+    uart.write(DIVIDER_BASE + 6, count & 0xFFFF)
+    for _ in range(100):
+        readies = uart.read(DIVIDER_BASE + 10)
+        if readies >= count:
+            break
+    return (uart.read(DIVIDER_BASE + 8), uart.read(DIVIDER_BASE + 9)), readies, uart.read(DIVIDER_BASE + 11)
+
+
+def run_lut_divider(uart, rounds, r):
+    print("lut_divider")
+    lo, hi = -2**31, 2**31 - 1
+    pairs = [(1, 1), (1, -1), (-1, 1), (lo, 1), (lo, -1), (hi, lo), (lo, lo), (hi, hi), (1000, 3),
+             (-1000, 7), (12345, 0), (0, 5), (5, hi), (123456789, -98765), (1, 2**30), (-77777, -3)]
+    for _ in range(max(16, rounds // 8)):
+        pairs.append((wrap(r.random.getrandbits(32), 32), wrap(r.random.getrandbits(32), 32) >> r.random.randint(0, 31)))
+    wrong = []
+    for n, d in pairs:
+        q, dbz = divide(uart, n, d)
+        if q != lut_divide_model(n, d, QUOTIENT_RADIX) or dbz != (d == 0):
+            wrong.append(f"{n}/{d} -> {q} expected {lut_divide_model(n, d, QUOTIENT_RADIX)}")
+    r.check(f"{len(pairs)} single divisions incl. edge cases", not wrong, ", ".join(wrong[:3]))
+
+    # input 1 + normalise 5 + reciprocal_calculator 4 + dsp + multiply 1 +
+    # dsp + shift 5 + output 1, both dsps one longer with the pre-adder register
+    latency = uart.read(DIVIDER_BASE + 5)
+    expected_latency = 21 + 2 * uart.read(45)
+    r.check(f"pipeline latency {expected_latency} clock edges", latency == expected_latency, f"read {latency}")
+
+    sweeps = [(0, 100000, -3000, 6000, "denominators -3000 .. 2999"),
+              (0, -(2**31), 1, 65535, "most negative numerator, denominators 1 .. 65535"),
+              (1, 0x1234567, 0x7654321, 65536, "65536 random pairs, back to back"),
+              (3, 0x1357, 0x2468ACE, 65536, "65536 random pairs, irregular gaps")]
+    for _ in range(2):
+        sweeps.append((r.random.choice([1, 3]), r.random.getrandbits(31) | 1, r.random.getrandbits(31) | 1,
+                       r.random.randint(1, 20000), "random seeds"))
+    for mode, n, d, count, name in sweeps:
+        sums, readies, zeros = divider_sweep(uart, mode, n, d, count)
+        expected_sums, expected_zeros = divider_sweep_model(mode, n, d, count, QUOTIENT_RADIX)
+        ok = sums == expected_sums and readies == count and zeros == expected_zeros
+        r.check(f"sweep {name}", ok, f"{count} divisions, {readies} ready, {zeros} division by zero")
+
+    # accuracy of the model itself against real division
+    worst = 0.0
+    for _ in range(20000):
+        n = wrap(r.random.getrandbits(32), 32)
+        d = wrap(r.random.getrandbits(32), 32) >> r.random.randint(0, 31)
+        if d == 0:
+            continue
+        exact = n / d * 2**QUOTIENT_RADIX
+        if 2**12 < abs(exact) < 2**31 - 2:
+            worst = max(worst, abs(lut_divide_model(n, d, QUOTIENT_RADIX) - exact) / abs(exact))
+    print(f"        lut_divide relative error up to {worst:.2e} for quotients above 2**12")
 
 
 def main():

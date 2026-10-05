@@ -47,6 +47,11 @@
 --        +4 sweep N  +5 sweep start  +6 s1  +7 s2  +8 readies  +9 mode
 --   (see lut_sweep.vhd)
 --
+-- lut_divider, 32 bit numerator / denominator, quotient radix 16, own
+-- fixed_dsps with the same pre-add option :
+--
+--   96..107 : see divider_sweep.vhd
+--
 -- fixed_dsp recomputes its result register on every clock, the core drives
 -- init_fixed_dsp while idle so an accumulate only carries across back to
 -- back requests of one burst
@@ -94,6 +99,7 @@ architecture rtl of uart_test_core is
     signal bus_from_sine           : fpga_interconnect_record := init_fpga_interconnect;
     signal bus_from_reciprocal     : fpga_interconnect_record := init_fpga_interconnect;
     signal bus_from_sqrt           : fpga_interconnect_record := init_fpga_interconnect;
+    signal bus_from_divider        : fpga_interconnect_record := init_fpga_interconnect;
 
     signal loopback_register : std_logic_vector(31 downto 0) := (others => '0');
     signal read_counter      : unsigned(31 downto 0) := (others => '0');
@@ -216,7 +222,7 @@ begin
                 write_data_to_address(bus_from_top, 0, register_bank(bank_index));
             end if;
 
-            bus_to_communications <= bus_from_top and bus_from_dsp and bus_from_sine and bus_from_reciprocal and bus_from_sqrt;
+            bus_to_communications <= bus_from_top and bus_from_dsp and bus_from_sine and bus_from_reciprocal and bus_from_sqrt and bus_from_divider;
 
             if system_reset = '1' then
                 loopback_register     <= (others => '0');
@@ -420,6 +426,20 @@ begin
         clock          => clock
         ,fixed_dsp_in  => sqrt_dsp_in
         ,fixed_dsp_out => sqrt_dsp_out
+    );
+
+------------------------------------------------------------------------
+    u_divider_sweep : entity work.divider_sweep
+    generic map (
+        g_base_address      => 96
+        ,g_quotient_radix   => 16
+        ,g_pre_add_register => g_dsp_pre_add_register
+    )
+    port map (
+        clock    => clock
+        ,reset   => system_reset
+        ,bus_in  => bus_from_communications
+        ,bus_out => bus_from_divider
     );
 
 ------------------------------------------------------------------------

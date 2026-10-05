@@ -8,6 +8,7 @@ context vunit_lib.vunit_context;
     use work.lut_sine_pkg.all;
     use work.lut_reciprocal_pkg.all;
     use work.lut_sqrt_pkg.all;
+    use work.lut_divider_pkg.all;
 
 -- talks to uart_test_core through its uart pins with a behavioural 8N1
 -- uart, the same byte frames test_uart.py sends :
@@ -134,6 +135,71 @@ begin
             check_register(base + 2, std_logic_vector(expected_result(base, to_unsigned(input mod 2**16, 16))));
         end check_single;
 
+        ------------------------------
+        constant divider_base   : natural := 96;
+        constant quotient_radix : natural := 16;
+
+        function galois_step (x : std_logic_vector(31 downto 0)) return std_logic_vector is
+        begin
+            if x(0) = '1' then
+                return ('0' & x(31 downto 1)) xor x"80200003";
+            else
+                return '0' & x(31 downto 1);
+            end if;
+        end galois_step;
+
+        procedure check_division (numerator : integer; denominator : integer) is
+            constant expected : signed(31 downto 0) := lut_divide(to_signed(numerator, 32), to_signed(denominator, 32), quotient_radix);
+        begin
+            write_register(divider_base + 0, numerator);
+            write_register(divider_base + 1, denominator);
+            write_register(divider_base + 2, 1);
+            check_register(divider_base + 3, std_logic_vector(expected));
+            check_register(divider_base + 4, boolean'pos(denominator = 0));
+        end check_division;
+
+        procedure check_divider_sweep (mode : natural; numerator : integer; denominator : integer; count : natural) is
+            variable n, d       : std_logic_vector(31 downto 0);
+            variable sum1, sum2 : unsigned(31 downto 0) := (others => '0');
+            variable zeros      : natural := 0;
+            variable q          : signed(31 downto 0);
+            variable divisor    : signed(31 downto 0);
+            variable readies    : std_logic_vector(31 downto 0);
+        begin
+            n := std_logic_vector(to_signed(numerator, 32));
+            d := std_logic_vector(to_signed(denominator, 32));
+            for i in 1 to count loop
+                if mode mod 2 = 0 then
+                    divisor := signed(d);
+                    d := std_logic_vector(unsigned(d) + 1);
+                else
+                    divisor := shift_right(signed(d), to_integer(unsigned(n(4 downto 0))));
+                end if;
+                q := lut_divide(signed(n), divisor, quotient_radix);
+                if divisor = 0 then
+                    zeros := zeros + 1;
+                end if;
+                if mode mod 2 = 1 then
+                    n := galois_step(n);
+                    d := galois_step(d);
+                end if;
+                sum1 := sum1 + unsigned(q);
+                sum2 := sum2 + sum1;
+            end loop;
+            write_register(divider_base + 0, numerator);
+            write_register(divider_base + 1, denominator);
+            write_register(divider_base + 7, mode);
+            write_register(divider_base + 6, count mod 2**16);
+            loop
+                read_register(divider_base + 10, readies);
+                exit when to_integer(unsigned(readies)) >= count;
+            end loop;
+            check_register(divider_base + 8, std_logic_vector(sum1));
+            check_register(divider_base + 9, std_logic_vector(sum2));
+            check_register(divider_base + 10, count);
+            check_register(divider_base + 11, zeros);
+        end check_divider_sweep;
+
         procedure check_sweep (base : natural; start : natural; count : natural; mode : natural) is
             variable sum1, sum2 : unsigned(31 downto 0) := (others => '0');
             variable input      : unsigned(15 downto 0) := to_unsigned(start, 16);
@@ -241,11 +307,23 @@ begin
             check_sweep(calculator_bases(b), start => 65000, count => 1000, mode => 0);
         end loop;
 
+        -- lut_divider
+        check_division(1000, 3);
+        check_division(-1000, 7);
+        check_division(7, 0);
+        check_division(integer'low, -1);
+        check_division(123456789, -98765);
+        check_division(1, integer'high);
+
+        check_divider_sweep(mode => 0, numerator => 100000, denominator => -3000, count => 6000);
+        check_divider_sweep(mode => 1, numerator => 16#1234567#, denominator => 16#7654321#, count => 2**16);
+        check_divider_sweep(mode => 3, numerator => 16#1357#, denominator => 16#2468ace#, count => 20000);
+
         test_runner_cleanup(runner);
         wait;
     end process stimulus;
 
-    test_runner_watchdog(runner, 300 ms);
+    test_runner_watchdog(runner, 500 ms);
 ------------------------------------------------------------------------
     -- 8N1 receiver, runs alongside the sender since the fpga can start
     -- its response while the last stop bit of a request is still going out

@@ -59,8 +59,10 @@ set_global_assignment -name VHDL_FILE $fixed_dir/lut_interpolation/lut_reciproca
 set_global_assignment -name VHDL_FILE $fixed_dir/reciprocal_calculator/reciprocal_calculator.vhd
 set_global_assignment -name VHDL_FILE $fixed_dir/lut_interpolation/lut_sqrt_pkg.vhd
 set_global_assignment -name VHDL_FILE $fixed_dir/sqrt_calculator/sqrt_calculator.vhd
+set_global_assignment -name VHDL_FILE $fixed_dir/lut_divider/lut_divider.vhd
 set_global_assignment -name VHDL_FILE $source_dir/git_hash_pkg.vhd
 set_global_assignment -name VHDL_FILE $source_dir/lut_sweep.vhd
+set_global_assignment -name VHDL_FILE $source_dir/divider_sweep.vhd
 set_global_assignment -name VHDL_FILE $source_dir/uart_test_core.vhd
 set_global_assignment -name VHDL_FILE $this_file_path/axc3000_top.vhd
 

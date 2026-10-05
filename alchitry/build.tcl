@@ -35,8 +35,10 @@ set VHDL_SOURCES [list \
     "$FIXED_DIR/reciprocal_calculator/reciprocal_calculator.vhd" \
     "$FIXED_DIR/lut_interpolation/lut_sqrt_pkg.vhd" \
     "$FIXED_DIR/sqrt_calculator/sqrt_calculator.vhd" \
+    "$FIXED_DIR/lut_divider/lut_divider.vhd" \
     "$SOURCE_DIR/git_hash_pkg.vhd" \
     "$SOURCE_DIR/lut_sweep.vhd" \
+    "$SOURCE_DIR/divider_sweep.vhd" \
     "$SOURCE_DIR/uart_test_core.vhd" \
     "$BOARD_DIR/main_clocks.vhd" \
     "$BOARD_DIR/alchitry_au_top.vhd" \
