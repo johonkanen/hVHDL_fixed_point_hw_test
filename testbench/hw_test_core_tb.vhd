@@ -717,6 +717,22 @@ begin
         check_word36(116, lut_divide(product36, to_signed(-3 * 2**22, 36), mproc36_radix
             , divider_point_lut, divider_slope_lut, divider_table_radix, divider_x_frac_width));
 
+        -- program 352 : sin and cos of 120, in turns, and sin^2 + cos^2
+        write_word36(120, to_signed(3 * 2**21, 36)); -- 0.1875 turn at radix 24
+        write_register(mproc36_base, 352);
+        write_register(mproc36_base + 1, 1);
+        for k in 1 to 20 loop
+            read_register(mproc36_base + 2, data1);
+            exit when data1 = x"00000000";
+        end loop;
+        check_register(mproc36_base + 3, 1);
+        quotient36 := shift_left(resize(get_sine_from_quarter_wave_lut(to_unsigned(3 * 2**13, 16)), 36), mproc36_radix - 15);
+        product36  := shift_left(resize(get_sine_from_quarter_wave_lut(to_unsigned(3 * 2**13 + 2**14, 16)), 36), mproc36_radix - 15);
+        check_word36(121, quotient36);
+        check_word36(122, product36);
+        check_word36(123, mult_add36(quotient36, quotient36, (others => '0')));
+        check_word36(124, mult_add36(product36, product36, mult_add36(quotient36, quotient36, (others => '0'))));
+
         -- program 288 : 118 <- sqrt(117), 119 <- 117 / 118
         write_word36(117, signed(x(3 downto 0)) & signed(y) and x"7ffffffff");
         write_register(mproc36_base, 288);

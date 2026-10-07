@@ -34,3 +34,6 @@ trion/.lock
 
 # test_all.sh
 test_logs/
+
+# build_all.sh
+build_logs/

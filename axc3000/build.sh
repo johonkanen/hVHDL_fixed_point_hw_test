@@ -4,6 +4,9 @@
 #
 #    ./build.sh            full compile -> output_files/uart_test.sof
 #    ./build.sh program    load the .sof over JTAG (see program.sh)
+#    ./build.sh elaborate  analysis and elaboration only, a minute's check
+#                          of the VHDL ; not while a build runs, they share
+#                          the project
 #
 #  Set QUARTUS_BIN if quartus is not in ~/altera_pro/26.1.1/quartus/bin.
 # ---------------------------------------------------------------------------
@@ -31,8 +34,13 @@ case "${1:-build}" in
     program)
         exec ./program.sh output_files/uart_test.sof
         ;;
+    elaborate)
+        ../write_git_hash.sh
+        rm -f uart_test.qsf uart_test.qpf
+        exec "$QUARTUS_BIN/quartus_sh" -t build.tcl elaborate
+        ;;
     *)
-        echo "Usage: $0 [build|program]" >&2
+        echo "Usage: $0 [build|program|elaborate]" >&2
         exit 1
         ;;
 esac

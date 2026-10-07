@@ -78,7 +78,8 @@ Register map (source/hw_test_core.vhd) :
     the same with 36 bit data and instructions (8 bit address fields,
     a 256 word data ram) at radix 24 and a math unit (division, program
     224 : 112 <- 110 / 111, 113 <- 112 * 114 + 115, 116 <- 113 / 111,
-    288 : 118 <- sqrt(117), 119 <- 117 / 118) :
+    288 : 118 <- sqrt(117), 119 <- 117 / 118,
+    352 : 121 <- sin(120), 122 <- cos(120) in turns, 124 <- sin^2 + cos^2) :
     144..158 registers   512..767 data ram bits 31..0   768..1023 bits 35..32
     256..383 data ram : write -> the ram, read <- a copy of it       RW
     base +0 input   +1 write -> one request   +2 result               RW/WO/RO
@@ -998,6 +999,28 @@ def run_math_unit(mp, r):
             wrong.append(f"sqrt {a} : {got} expected {expected}")
     r.check("20 runs of program 288, a square root and a division by it", not wrong, ", ".join(wrong[:2]))
     r.check("program 288 ready once", all(run[0] == 1 for run in runs), f"ready pulses {sorted(set(run[0] for run in runs))}")
+
+    # program 352 : sin, cos of 120 in turns and sin^2 + cos^2 ; the
+    # angle is the 16 bits under the radix, 16 bit results at radix 15
+    def sine(angle):
+        return wrap(sine_model(angle & 0xFFFF) << (radix - 15), w)
+
+    wrong, runs, worst = [], [], 0.0
+    mp.write(125, 0)
+    for _ in range(20):
+        a = wrap(r.random.getrandbits(w), w)
+        mp.write(120, a)
+        runs.append(mp.run(352))
+        angle = (a >> (radix - 16)) & 0xFFFF
+        s_, c_ = sine(angle), sine(angle + 0x4000)
+        s2 = mult_add_model(s_, s_, 0, radix, w)
+        expected = [s_, c_, s2, mult_add_model(c_, c_, s2, radix, w)]
+        got = [mp.read(k) for k in (121, 122, 123, 124)]
+        if got != expected:
+            wrong.append(f"angle {angle:#06x} : {got} expected {expected}")
+        worst = max(worst, abs(got[3] / 2**radix - 1.0))
+    r.check("20 runs of program 352, sin, cos and sin^2 + cos^2", not wrong, ", ".join(wrong[:2]))
+    print(f"        sin^2 + cos^2 within {worst:.1e} of 1")
 
 
 def run_boost_converter(mp, r):

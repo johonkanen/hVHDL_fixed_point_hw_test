@@ -68,6 +68,15 @@ trion/build.sh program       # JTAG on the FT2232H channel B, by serial number
 python3 test_uart.py --board trion
 ```
 
+`build_all.sh` builds the boards (all four, or the ones named) in parallel
+after a Quartus analysis and elaboration of the design, about 20 seconds:
+Quartus and Efinity reject VHDL that nvc and Vivado accept (a descending
+slice of an unconstrained parameter, say), and if the check fails nothing
+is built. Its summary gives each build's result, whether it wrote a new
+bitstream and its setup slack; logs go to `build_logs/`.
+`axc3000/build.sh elaborate` runs the check alone (not while an AXC3000
+build runs, they share the project).
+
 `test_all.sh` programs and tests the boards one after another (all four, or
 the ones named, e.g. `./test_all.sh ti60evm trion`) without building, logs
 each step to `test_logs/` and exits 1 when any board fails.
@@ -241,11 +250,13 @@ are in the program RAM, the operands and results in the 128-word data RAM:
 A second instance has 36-bit data and 36-bit instructions at radix 24, the
 same programs and registers from 144 (144..158), and a math unit: the
 processor's `fixed_math` (`lut_divider` and `full_range_sqrt`, each with a
-512 × 18 bit table) beside `fixed_mult_add`, for division and square root. Its result latency is 18, 1 less without the
+512 × 18 bit table, and `sine_calculator`'s 16 bit sine) beside
+`fixed_mult_add`, for division, square root, sine and cosine. Its result latency is 18, 1 less without the
 data RAM's output register and 4 more with the pre-adder and product
 registers; the scheduler keeps the two units' writes out of each other's
-clock. `test_uart.py` checks programs 224 and 288 bit for bit against
-`lut_divide_model` and `full_range_sqrt_model` with random operands. Its instructions have 8-bit
+clock. `test_uart.py` checks programs 224, 288 and 352 bit for bit against
+`lut_divide_model`, `full_range_sqrt_model` and `sine_model` with random
+operands. Its instructions have 8-bit
 address fields, so its data RAM is 256 words: bits 31..0 at 512..767 and
 bits 35..32 at 768..1023. A read from the high window gives a word's bits
 above 31 sign extended; a write there sets the bits above 31 of the next
@@ -263,6 +274,7 @@ models in `test_uart.py` follow the data width.
 | 192 | (36-bit instance) `mpy_add` and `mpy_sub` on operands at 200..205 into 250, 251; 4 + S + L clock edges |
 | 224 | (36-bit instance, math unit) 112 ← 110 / 111, 113 ← 112 · 114 + 115, 116 ← 113 / 111 |
 | 288 | (36-bit instance, math unit) 118 ← √117, 119 ← 117 / 118 |
+| 352 | (36-bit instance, math unit) 121 ← sin(120), 122 ← cos(120), the angle in turns, 124 ← sin² + cos² (123 ← 121 · 121 + 125, 124 ← 122 · 122 + 123, 125 = 0) |
 
 The programs are written once, as their instructions in order, and laid out
 for each instance by the processor's `microprogram_assembler_pkg`
@@ -364,10 +376,10 @@ the program.
 
   | board | clock | RAM output register | DSP request registers | calculators | divider / √ | setup slack |
   |---|---|---|---|---|---|---|
-  | Ti60 EVM | 120 MHz | off | off | 4 | 10 | +3.23 ns |
-  | Alchitry Au+ (pre-adder and product registered) | 120 MHz | off | off | 6 | 14 | +0.42 ns |
-  | AXC3000 | 120 MHz | on | off | 5 | 11 | +0.09 ns |
-  | Trion T120 (pre-adder registered) | 60 MHz | on | on | 7 | 15 | +5.32 ns (Fmax 88.1 MHz) |
+  | Ti60 EVM | 120 MHz | off | off | 4 | 10 | +3.11 ns |
+  | Alchitry Au+ (pre-adder and product registered) | 120 MHz | off | off | 6 | 14 | +0.22 ns |
+  | AXC3000 | 120 MHz | on | off | 5 | 11 | +0.03 ns |
+  | Trion T120 (pre-adder registered) | 60 MHz | on | on | 7 | 15 | +4.45 ns (Fmax 81.9 MHz) |
 
   On the AXC3000 the M20K read register straight into a DSP misses 120 MHz
   by 0.41 ns, so it keeps the RAM output register. The Trion starts with

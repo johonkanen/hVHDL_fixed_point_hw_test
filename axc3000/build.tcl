@@ -3,9 +3,11 @@
 # (Agilex 3 A3CY100BM16AE7S)
 #
 #     quartus_sh -t build.tcl compile     (or ./build.sh)
+#     quartus_sh -t build.tcl elaborate   (or ./build.sh elaborate)
 #
-# "compile" generates the pll IP and runs the full flow, without it the
-# script only (re)writes the project
+# "compile" generates the pll IP and runs the full flow, "elaborate" the
+# pll IP and synthesis' analysis and elaboration only, a minute's check of
+# the VHDL ; without either the script only (re)writes the project
 # ------------------------------------------------------------------------
 
 package require ::quartus::project
@@ -105,7 +107,10 @@ set_instance_assignment -name CURRENT_STRENGTH_NEW 6MA   -to uart_txd      -enti
 export_assignments
 
 # ---------------------------------------------------------------- compile
-if {[lsearch -exact $quartus(args) "compile"] >= 0} {
+set compile   [expr {[lsearch -exact $quartus(args) "compile"] >= 0}]
+set elaborate [expr {[lsearch -exact $quartus(args) "elaborate"] >= 0}]
+
+if {$compile || $elaborate} {
 
     set qgen "qsys-generate"
     if {[auto_execok $qgen] eq ""} {
@@ -122,9 +127,17 @@ if {[lsearch -exact $quartus(args) "compile"] >= 0} {
     }
 
     package require ::quartus::flow
-    if {[catch {execute_flow -compile} msg]} {
-        puts "ERROR: compile flow failed: $msg"
-        exit 1
+    if {$compile} {
+        if {[catch {execute_flow -compile} msg]} {
+            puts "ERROR: compile flow failed: $msg"
+            exit 1
+        }
+    } else {
+        if {[catch {execute_module -tool syn -args "--analysis_and_elaboration"} msg]} {
+            puts "ERROR: analysis and elaboration failed: $msg"
+            exit 1
+        }
+        puts "### analysis and elaboration passed"
     }
 }
 
