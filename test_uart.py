@@ -71,6 +71,7 @@ Register map (source/hw_test_core.vhd) :
     140 result latency L : the programs are scheduled for it      RO
     141 jump delay slots S, 2 without the program ram's register    RO
     142 the math unit's result latency, 0 without one               RO
+    143 program cache depth C, 0 without one, a repeat start C less RO
         run times 0 : 12 + S + L, 32 : 4 + S + 100 L,
         128 : 3 + S + 3 L, 192 : 4 + S + L
     384..511 the data ram's bits above 31 (none at 32 bits)          RW
@@ -80,7 +81,7 @@ Register map (source/hw_test_core.vhd) :
     224 : 112 <- 110 / 111, 113 <- 112 * 114 + 115, 116 <- 113 / 111,
     288 : 118 <- sqrt(117), 119 <- 117 / 118,
     352 : 121 <- sin(120), 122 <- cos(120) in turns, 124 <- sin^2 + cos^2) :
-    144..158 registers   512..767 data ram bits 31..0   768..1023 bits 35..32
+    144..159 registers   512..767 data ram bits 31..0   768..1023 bits 35..32
     256..383 data ram : write -> the ram, read <- a copy of it       RW
     base +0 input   +1 write -> one request   +2 result               RW/WO/RO
          +3 latency, request at the input to ready, clock edges     RO
@@ -856,6 +857,11 @@ class Mproc:
         self.slots = uart.read(base + 13)
         # the math unit's result latency, 0 without one
         self.math_latency = uart.read(base + 14)
+        # the program cache's depth, 0 without one : a run of the program
+        # started last takes that many clock edges less
+        self.cache = uart.read(base + 15)
+        self.last_start = None
+        self.cached_runs = 0
 
     def write(self, address, value):
         if self.w > 32:
@@ -869,12 +875,18 @@ class Mproc:
         return wrap(value, self.w)
 
     def run(self, start):
+        """ready pulses and the clock edges to ready, the edges as without
+        the cache : a start of the program started last is a cache hit,
+        its depth shorter, and has it added back"""
         self.uart.write(self.base + 0, start)
         self.uart.write(self.base + 1, 1)
         for _ in range(100):
             if self.uart.read(self.base + 2) == 0:
                 break
-        return self.uart.read(self.base + 3), self.uart.read(self.base + 4)
+        saved = self.cache if start == self.last_start else 0
+        self.cached_runs += saved > 0
+        self.last_start = start
+        return self.uart.read(self.base + 3), self.uart.read(self.base + 4) + saved
 
     def write_boost(self, **values):
         for name, value in values.items():
@@ -893,7 +905,8 @@ def run_mproc(mp, rounds, r):
     w, radix = mp.w, mp.radix
     latency, slots = mp.latency, mp.slots
     print(f"microprogram processor, {w} bit data and {mp.uart.read(mp.base + 10)} bit instructions, "
-          f"fixed_mult_add at radix {radix}, result latency {latency}, jump delay slots {slots}")
+          f"fixed_mult_add at radix {radix}, result latency {latency}, jump delay slots {slots}, "
+          f"program cache depth {mp.cache}")
     mp.uart.write(mp.base + 6, 0)
 
     values = [wrap(r.random.getrandbits(w), w) for _ in range(mp.ram_size)]
@@ -950,6 +963,10 @@ def run_mproc(mp, rounds, r):
         run_math_unit(mp, r)
 
     run_boost_converter(mp, r)
+
+    if mp.cache:
+        r.check(f"{mp.cached_runs} runs from the program cache, {mp.cache} clock edges shorter",
+                mp.cached_runs > 0, "no repeated starts")
 
 
 # the math unit's lut_divider table : 512 x 18 bits at radix 16, 18 bit x_frac

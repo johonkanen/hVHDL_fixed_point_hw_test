@@ -24,6 +24,8 @@
 --   +13: jump delay slots S, 3 with the program ram's output
 --        register, 2 without                                      RO
 --   +14: the math unit's result latency, 0 without one            RO
+--   +15: the program cache's depth, S with g_program_cache, else 0 :
+--        a run of the program last started takes S clocks less     RO
 --
 -- the data ram, of g_word_length bits, from g_ram_base_address, bits
 -- 31..0 :
@@ -109,6 +111,10 @@ entity mproc_test is
         -- the processor's rams' output registers, microprogram_core's
         ;g_program_ram_output_register : boolean := true
         ;g_data_ram_output_register    : boolean := true
+        -- the sequencer's program cache : a repeated start takes the
+        -- program's first instructions from a cache line, jump delay slots
+        -- clocks sooner
+        ;g_program_cache : boolean := false
         -- a fixed_math unit (division, square root, sine and cosine) beside fixed_mult_add, and its
         -- divider's shifter stages
         ;g_math_unit : boolean := false
@@ -231,7 +237,10 @@ architecture rtl of mproc_test is
     constant test_program : work.dual_port_ram_pkg.ram_array(0 to instr_ref_subtype.address_high)(instr_ref_subtype.data'range)
         := encode(make_program, instruction_length);
 
-    signal mproc_in  : microprogram_processor_in_record;
+    -- explicitly initialised : Vivado ignores the implicit false and gives
+    -- the request's register, a set flop, an init of 1, a start of program
+    -- 0 at configuration
+    signal mproc_in  : microprogram_processor_in_record := (processor_requested => false, start_address => 0);
     signal mproc_out : microprogram_processor_out_record;
 
     signal mc_output   : ref_subtype.ram_write_in'subtype;
@@ -321,6 +330,8 @@ begin
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 12, std_logic_vector(to_unsigned(config.result_latency, 32)));
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 13, std_logic_vector(to_unsigned(config.delay_slots, 32)));
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 14, std_logic_vector(to_unsigned(config.math_latency, 32)));
+            connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 15
+                , std_logic_vector(to_unsigned(config.delay_slots * boolean'pos(g_program_cache), 32)));
 
             if write_is_requested_to_address(bus_in, g_base_address + 1) then
                 calculate(mproc_in, to_integer(unsigned(start_address(9 downto 0))));
@@ -396,7 +407,8 @@ begin
     u_microprogram_core : entity work.microprogram_core
     generic map (g_program => test_program, g_data => program_data
         ,g_program_ram_output_register => g_program_ram_output_register
-        ,g_data_ram_output_register    => g_data_ram_output_register)
+        ,g_data_ram_output_register    => g_data_ram_output_register
+        ,g_program_cache               => g_program_cache)
     port map (
         clock            => clock
         ,mproc_in        => mproc_in
