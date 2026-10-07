@@ -276,6 +276,11 @@ the program.
   sets `g_dsp_pre_add_register` (the `fixed_dsp` generic `g_pre_add_register`),
   which adds a register between the pre-adder and the multiplier: +0.39 ns at
   120 MHz, latency 3.
+  The result adder after the cascaded multiply, a 64-bit carry chain in
+  fabric, stays within a few hundred ps of 120 MHz, and placement changes
+  elsewhere in the design can push it over. `alchitry/build.tcl` runs
+  `phys_opt_design` again after `route_design` for it, and stops before
+  writing a bitstream if timing is not met.
 * **The Efinix `program` stages check their board is attached.** Efinity's
   `efx_run` program flow takes the first FTDI device it finds and drives JTAG
   over its pins, e.g. the Alchitry's UART channel. `ti60evm/build.sh program`
@@ -295,10 +300,10 @@ the program.
 
   | board | clock | RAM output register | DSP request registers | calculators | divider / √ | setup slack |
   |---|---|---|---|---|---|---|
-  | Ti60 EVM | 120 MHz | off | off | 4 | 10 | +3.27 ns |
-  | Alchitry Au+ (pre-adder registered) | 120 MHz | off | off | 5 | 12 | +0.43 ns |
-  | AXC3000 | 120 MHz | on | off | 5 | 11 | +0.24 ns |
-  | Trion T120 (pre-adder registered) | 60 MHz | on | on | 7 | 15 | +5.41 ns (Fmax 88.8 MHz) |
+  | Ti60 EVM | 120 MHz | off | off | 4 | 10 | +3.21 ns |
+  | Alchitry Au+ (pre-adder registered) | 120 MHz | off | off | 5 | 12 | +0.05 ns |
+  | AXC3000 | 120 MHz | on | off | 5 | 11 | +1.07 ns |
+  | Trion T120 (pre-adder registered) | 60 MHz | on | on | 7 | 15 | +6.20 ns (Fmax 95.6 MHz) |
 
   On the AXC3000 the M20K read register straight into a DSP misses 120 MHz
   by 0.41 ns, so it keeps the RAM output register. The Trion starts with

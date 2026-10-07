@@ -71,6 +71,9 @@ opt_design
 place_design
 phys_opt_design
 route_design
+# the fixed_dsp result adder's 64 bit carry chain is within a few hundred ps
+# of 120 MHz, optimise again on the routed design
+phys_opt_design
 
 report_utilization    -file "$OUTPUT_DIR/utilization.rpt"
 report_timing_summary -file "$OUTPUT_DIR/timing_summary.rpt"

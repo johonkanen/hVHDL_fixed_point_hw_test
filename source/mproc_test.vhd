@@ -284,7 +284,7 @@ begin
     end process registers;
 
     u_microprogram_core : entity work.microprogram_core
-    generic map (g_program => test_program, g_data => program_data, g_data_bit_width => word_length)
+    generic map (g_program => test_program, g_data => program_data)
     port map (
         clock            => clock
         ,mproc_in        => mproc_in
