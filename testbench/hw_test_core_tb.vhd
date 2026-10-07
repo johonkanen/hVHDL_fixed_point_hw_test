@@ -187,6 +187,7 @@ begin
 
         variable data1, data2 : std_logic_vector(31 downto 0);
         variable x, y         : std_logic_vector(31 downto 0);
+        variable i_state, u_state : std_logic_vector(31 downto 0);
         type word_array is array (natural range <>) of std_logic_vector(31 downto 0);
         variable operands     : word_array(64 to 87);
 
@@ -392,6 +393,25 @@ begin
             check_register(mproc_base + 4, clocks);
         end run_program;
 
+        function to_fixed (x : real) return std_logic_vector is
+        begin
+            return std_logic_vector(to_signed(integer(x * 2.0**mproc_radix), 32));
+        end to_fixed;
+
+        -- n steps of mproc_test's boost converter model, program 128
+        procedure boost_steps (n : natural; i, u : inout std_logic_vector(31 downto 0);
+            vin, d, load, r, i_gain, u_gain : std_logic_vector(31 downto 0)) is
+            variable vl, ic : std_logic_vector(31 downto 0);
+        begin
+            for k in 1 to n loop
+                vl := mult_add(minus(d), u, vin);
+                ic := mult_sub(d, i, load);
+                vl := mult_add(minus(r), i, vl);
+                u  := mult_add(ic, u_gain, u);
+                i  := mult_add(vl, i_gain, i);
+            end loop;
+        end boost_steps;
+
     begin
         test_runner_setup(runner, runner_cfg);
         wait until reset = '0';
@@ -543,6 +563,44 @@ begin
         end loop;
         run_program(32, clocks => 2007);
         check_register(mproc_ram_base + 96, y);
+
+        -- program 128 : one boost converter step from its initial data
+        check_register(mproc_ram_base + 100, to_fixed(20.0));
+        check_register(mproc_ram_base + 107, to_fixed(12.0));
+        i_state := to_fixed(0.0);
+        u_state := to_fixed(12.0);
+        boost_steps(1, i_state, u_state, to_fixed(20.0), to_fixed(0.8), to_fixed(0.0), to_fixed(0.8), to_fixed(0.7 / 3.0), to_fixed(0.7 / 3.0));
+        run_program(128, clocks => 36);
+        check_register(mproc_ram_base + 106, i_state);
+        check_register(mproc_ram_base + 107, u_state);
+
+        -- in the background with new data, replayed for the runs it made
+        write_register(mproc_ram_base + 100, to_fixed(10.0));
+        write_register(mproc_ram_base + 101, to_fixed(0.5));
+        write_register(mproc_ram_base + 102, to_fixed(0.25));
+        i_state := to_fixed(1.0);
+        u_state := to_fixed(5.0);
+        write_register(mproc_ram_base + 106, i_state);
+        write_register(mproc_ram_base + 107, u_state);
+        write_register(mproc_base + 7, 60);
+        write_register(mproc_base + 6, 1);
+        for k in 1 to 20 loop
+            read_register(mproc_base + 8, data1);
+            exit when unsigned(data1) >= 20;
+        end loop;
+        write_register(mproc_base + 6, 0);
+        for k in 1 to 20 loop
+            read_register(mproc_base + 2, data1);
+            exit when data1 = x"00000000";
+        end loop;
+        read_register(mproc_base + 8, data1);
+        check(unsigned(data1) >= 20, "background runs " & integer'image(to_integer(unsigned(data1))));
+        boost_steps(to_integer(unsigned(data1)), i_state, u_state, to_fixed(10.0), to_fixed(0.5), to_fixed(0.25), to_fixed(0.8), to_fixed(0.7 / 3.0), to_fixed(0.7 / 3.0));
+        check_register(mproc_ram_base + 106, i_state);
+        check_register(mproc_ram_base + 107, u_state);
+        info("boost converter after " & integer'image(to_integer(unsigned(data1))) & " background steps : i "
+            & real'image(real(to_integer(signed(i_state))) / 2.0**mproc_radix) & " u "
+            & real'image(real(to_integer(signed(u_state))) / 2.0**mproc_radix));
 
         test_runner_cleanup(runner);
         wait;

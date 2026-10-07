@@ -226,19 +226,45 @@ are in the program RAM, the operands and results in the 128-word data RAM:
 | 131      | ready pulses since the last run                                  | RO |
 | 132      | clock edges from the run request to ready                        | RO |
 | 133      | radix                                                            | RO |
+| 134      | bit 0: run the boost converter model (program 128) in the background | RW |
+| 135      | clock edges from one background run to the next (default 1000)   | RW |
+| 136      | background runs since bit 0 of 134 was last set                  | RO |
 | 256..383 | data RAM: writes go to the processor's RAM, reads come from a copy kept from its RAM writes | RW |
 
 | program | contents |
 |--------:|----------|
 | 0  | one of each multiply-add command (`mpy_add`, `mpy_sub`, `neg_mpy_add`, `neg_mpy_sub`, `a_add_b_mpy_c`, `a_sub_b_mpy_c`, `lp_filter`) on operands at 64..84 into 1..7, and `acc`, `acc`, `get_acc_and_zero` of 85..87 into 8; 16 clock edges |
 | 32 | `set_rpt 99`, then the low pass filter `lp_filter` y ← (u − y) · g + y on y = 96, u = 97, g = 98 in a `jump` loop, 100 rounds; 2007 clock edges |
+| 128 | one Euler step of the averaged boost converter model from `ac_in_ac_out_lab_power_supply`'s `test_processor` v3; 36 clock edges |
+
+The boost converter model, with the duty d standing for the switch's 1 − D:
+
+```
+vL <- -d * u + vin        ic <- d * i - load
+vL <- -r * i + vL         u  <- ic * h/C + u
+i  <- vL * h/L + i
+```
+
+| data RAM | 100 | 101 | 102 | 103 | 104 | 105 | 106 | 107 | 108 | 109 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| | vin | d | load | r | h/L | h/C | i | u | vL | ic |
+| power-up | 20 | 0.8 | 0 | 0.8 | 0.7/3 | 0.7/3 | 0 | 12 | | |
+
+With bit 0 of 134 set, the model steps every 135 clocks while the processor
+is idle, and vin, d, load and r can be written through the data RAM window
+while it runs, with i and u read back the same way. It settles at
+i = load / d, u = (vin − r · i) / d. Clear bit 0 of 134 before running a
+program from 129.
 
 `fixed_mult_add` gives bits radix + 31 … radix of a · b ± c · 2^radix; the
 sums, differences and −a wrap to 32 bits in `fixed_dsp`'s pre-adder. The
 pre-adder register adds a clock before a result is in the data RAM, not to
 the run times. `test_uart.py` checks both
 programs bit for bit against a model, with random and edge-case operands,
-and their run times. A `jump` takes effect after the next three
+and their run times. For the boost converter it checks host-run steps at
+random operating points and a background run replayed for the number of
+runs it made, both bit for bit, and that load steps written while it runs
+settle at the steady state. A `jump` takes effect after the next three
 instructions, which are already fetched; a `program_end` among them ends
 the program.
 
@@ -269,10 +295,10 @@ the program.
 
   | board | clock | RAM output register | DSP request registers | calculators | divider / √ | setup slack |
   |---|---|---|---|---|---|---|
-  | Ti60 EVM | 120 MHz | off | off | 4 | 10 | +3.21 ns |
-  | Alchitry Au+ (pre-adder registered) | 120 MHz | off | off | 5 | 12 | +0.38 ns |
-  | AXC3000 | 120 MHz | on | off | 5 | 11 | +1.12 ns |
-  | Trion T120 (pre-adder registered) | 60 MHz | on | on | 7 | 15 | +5.96 ns (Fmax 93.4 MHz) |
+  | Ti60 EVM | 120 MHz | off | off | 4 | 10 | +3.27 ns |
+  | Alchitry Au+ (pre-adder registered) | 120 MHz | off | off | 5 | 12 | +0.43 ns |
+  | AXC3000 | 120 MHz | on | off | 5 | 11 | +0.24 ns |
+  | Trion T120 (pre-adder registered) | 60 MHz | on | on | 7 | 15 | +5.41 ns (Fmax 88.8 MHz) |
 
   On the AXC3000 the M20K read register straight into a DSP misses 120 MHz
   by 0.41 ns, so it keeps the RAM output register. The Trion starts with

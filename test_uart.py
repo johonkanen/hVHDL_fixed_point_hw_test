@@ -64,6 +64,8 @@ Register map (source/hw_test_core.vhd) :
     128 program start address   129 write -> run the program        RW/WO
     130 busy   131 ready pulses   132 clock edges from run to ready    RO
     133 radix                                                        RO
+    134 bit 0 : boost converter model (program 128) in the background RW
+    135 clock edges between background runs   136 background runs   RW/RO
     256..383 data ram : write -> the ram, read <- a copy of it       RW
     base +0 input   +1 write -> one request   +2 result               RW/WO/RO
          +3 latency, request at the input to ready, clock edges     RO
@@ -807,6 +809,31 @@ def mproc_filter_model(y, u, g, radix, rounds=100):
     return y
 
 
+BOOST = dict(vin=100, d=101, load=102, r=103, i_gain=104, u_gain=105, i=106, u=107)
+
+
+def boost_steps(n, i, u, vin, d, load, r, i_gain, u_gain, radix):
+    """n steps of mproc_test.vhd's boost converter model, program 128"""
+    def ma(a, b, c):
+        return mult_add_model(a, b, c, radix)
+    for _ in range(n):
+        vl = ma(wrap(-d, 32), u, vin)
+        ic = ma(d, i, -load)
+        vl = ma(wrap(-r, 32), i, vl)
+        u = ma(ic, u_gain, u)
+        i = ma(vl, i_gain, i)
+    return i, u
+
+
+def write_boost(uart, **values):
+    for name, value in values.items():
+        uart.write(MPROC_RAM + BOOST[name], value & 0xFFFFFFFF)
+
+
+def read_boost(uart):
+    return wrap(uart.read(MPROC_RAM + BOOST["i"]), 32), wrap(uart.read(MPROC_RAM + BOOST["u"]), 32)
+
+
 def run_program(uart, start):
     uart.write(MPROC_BASE + 0, start)
     uart.write(MPROC_BASE + 1, 1)
@@ -853,6 +880,69 @@ def run_microprogram_processor(uart, rounds, r):
     r.check("10 runs of a 100 round low pass filter loop", not wrong, ", ".join(wrong[:2]))
     r.check("program 32 ready once in 2007 clock edges", all(run == (1, 2007) for run in runs),
             f"ready pulses, clock edges {sorted(set(runs))}")
+
+    run_boost_converter(uart, radix, r)
+
+
+def run_boost_converter(uart, radix, r):
+    def fixed(x):
+        return int(round(x * 2**radix))
+
+    def real(x):
+        return x / 2**radix
+
+    uart.write(MPROC_BASE + 6, 0)
+    gains = dict(r=fixed(0.8), i_gain=fixed(0.7 / 3), u_gain=fixed(0.7 / 3))
+
+    # single steps from the host, random operating points
+    wrong, runs = [], []
+    for _ in range(10):
+        p = dict(vin=fixed(r.random.uniform(5, 30)), d=fixed(r.random.uniform(0.3, 0.9)),
+                 load=fixed(r.random.uniform(0, 2)), **gains)
+        i, u = fixed(r.random.uniform(-2, 2)), fixed(r.random.uniform(0, 40))
+        write_boost(uart, i=i, u=u, **p)
+        for _ in range(5):
+            runs.append(run_program(uart, 128))
+            i, u = boost_steps(1, i, u, radix=radix, **p)
+            got = read_boost(uart)
+            if got != (i, u):
+                wrong.append(f"{got} expected {(i, u)}")
+    r.check(f"{len(runs)} boost converter steps run from the host", not wrong, ", ".join(wrong[:2]))
+    r.check("program 128 ready once in 36 clock edges", all(run == (1, 36) for run in runs),
+            f"ready pulses, clock edges {sorted(set(runs))}")
+
+    # in the background, replayed for the number of runs it made
+    p = dict(vin=fixed(10.0), d=fixed(0.5), load=fixed(0.25), **gains)
+    i, u = fixed(1.0), fixed(5.0)
+    write_boost(uart, i=i, u=u, **p)
+    uart.write(MPROC_BASE + 7, 2000)
+    uart.write(MPROC_BASE + 6, 1)
+    time.sleep(0.05)
+    uart.write(MPROC_BASE + 6, 0)
+    for _ in range(100):
+        if uart.read(MPROC_BASE + 2) == 0:
+            break
+    n = uart.read(MPROC_BASE + 8)
+    expected = boost_steps(n, i, u, radix=radix, **p)
+    got = read_boost(uart)
+    r.check(f"{n} background steps", n > 0 and got == expected,
+            f"i {real(got[0]):.4f} A, u {real(got[1]):.4f} V")
+
+    # change the load while it runs : it settles at i = load / d,
+    # u = (vin - r i) / d
+    uart.write(MPROC_BASE + 6, 1)
+    settled = []
+    for load in (0.5, 1.5, 0.0):
+        write_boost(uart, load=fixed(load))
+        time.sleep(0.05)
+        i, u = read_boost(uart)
+        i_ss = load / 0.5
+        u_ss = (10.0 - 0.8 * i_ss) / 0.5
+        settled.append(abs(real(i) - i_ss) < 1e-3 and abs(real(u) - u_ss) < 1e-3)
+        print(f"        load {load} A : i {real(i):.4f} A (steady state {i_ss:.4f}), u {real(u):.4f} V ({u_ss:.4f})")
+    runs = uart.read(MPROC_BASE + 8)
+    uart.write(MPROC_BASE + 6, 0)
+    r.check("settles at the steady state after load steps written while it runs", all(settled), f"{runs} background steps")
 
 
 def main():

@@ -11,6 +11,10 @@
 --   +3 : ready pulses since the last run                          RO
 --   +4 : clock edges from the run request to ready                RO
 --   +5 : radix (g_radix)                                          RO
+--   +6 : bit 0 : run the boost converter model (program 128) in
+--        the background                                           RW
+--   +7 : clock edges from one background run to the next          RW
+--   +8 : background runs since bit 0 of +6 was last set           RO
 --
 -- the data ram, 128 words from g_ram_base_address :
 --
@@ -31,6 +35,22 @@
 --        acc 85, acc 86, get_acc_and_zero 8 <- 85 + 86 + 87
 --   32 : set_rpt 99, then lp_filter 96 <- (97 - 96) * 98 + 96 in a
 --        loop closed by jump, 100 times
+--   128: one time step of an averaged boost converter (the
+--        ac_in_ac_out_lab_power_supply test_processor v3 model), the
+--        inductor current i and capacitor voltage u from the input
+--        voltage, the duty d (as the switch's 1 - D) and the load
+--        current, Euler steps with h/L and h/C :
+--          vL <- -d * u + vin           ic <- d * i - load
+--          vL <- -r * i + vL            u  <- ic * h/C + u
+--          i  <- vL * h/L + i
+--        in the data ram
+--          100 vin   101 d   102 load   103 r   104 h/L   105 h/C
+--          106 i     107 u   108 vL     109 ic
+--        and starts at vin 20, d 0.8, load 0, r 0.8, h/L = h/C = 0.7/3,
+--        i 0, u 12. With the background runs on, the model steps every
+--        +7 clocks while the processor is idle and vin, d, load and r
+--        can be written while it runs. Turn it off before running a
+--        program from +1.
 --
 -- fixed_mult_add runs on fixed_dsp : the sums, differences and -x wrap
 -- to 32 bits in its pre-adder, a product a * b +- c * 2**radix is taken
@@ -77,8 +97,34 @@ architecture rtl of mproc_test is
     constant instr_ref_subtype : subtype_ref_record :=
         create_ref_subtypes(readports => 1, datawidth => instruction_length, addresswidth => 10);
 
-    constant program_data : work.dual_port_ram_pkg.ram_array(0 to ref_subtype.address_high)(ref_subtype.data'range) :=
-        (others => (others => '0'));
+    -- the boost converter model's data
+    constant vin      : natural := 100;
+    constant duty     : natural := 101;
+    constant load     : natural := 102;
+    constant r        : natural := 103;
+    constant i_gain   : natural := 104;
+    constant u_gain   : natural := 105;
+    constant i        : natural := 106;
+    constant u        : natural := 107;
+    constant vl       : natural := 108;
+    constant ic       : natural := 109;
+    constant boost_converter : natural := 128;
+
+    function to_fixed (x : real) return std_logic_vector is
+    begin
+        return std_logic_vector(to_signed(integer(x * 2.0**g_radix), word_length));
+    end to_fixed;
+
+    constant program_data : work.dual_port_ram_pkg.ram_array(0 to ref_subtype.address_high)(ref_subtype.data'range) := (
+        vin      => to_fixed(20.0)
+        ,duty    => to_fixed(0.8)
+        ,load    => to_fixed(0.0)
+        ,r       => to_fixed(0.8)
+        ,i_gain  => to_fixed(0.7 / 3.0)
+        ,u_gain  => to_fixed(0.7 / 3.0)
+        ,i       => to_fixed(0.0)
+        ,u       => to_fixed(12.0)
+        ,others  => (others => '0'));
 
     -- results depend on operands written at least 16 instructions before
     constant test_program : work.dual_port_ram_pkg.ram_array(0 to instr_ref_subtype.address_high)(instr_ref_subtype.data'range) := (
@@ -98,6 +144,13 @@ architecture rtl of mproc_test is
         , 33 => op(lp_filter , 96 , 97 , 96 , 98)
         , 49 => op(jump      , 33)
         , 53 => op(program_end)
+
+        , boost_converter      => op(neg_mpy_add , vl , duty   , u      , vin)
+        , boost_converter + 1  => op(mpy_sub     , ic , duty   , i      , load)
+        , boost_converter + 13 => op(neg_mpy_add , vl , r      , i      , vl)
+        , boost_converter + 14 => op(mpy_add     , u  , ic     , u_gain , u)
+        , boost_converter + 28 => op(mpy_add     , i  , vl     , i_gain , i)
+        , boost_converter + 30 => op(program_end)
 
         , others => op(nop));
 
@@ -121,7 +174,17 @@ architecture rtl of mproc_test is
     signal unit_out : unit_out_ref'subtype := unit_out_ref;
 
     type shadow_array is array (0 to ram_size-1) of std_logic_vector(word_length-1 downto 0);
-    signal shadow_ram   : shadow_array := (others => (others => '0'));
+
+    function initial_shadow return shadow_array is
+        variable retval : shadow_array;
+    begin
+        for k in retval'range loop
+            retval(k) := program_data(k);
+        end loop;
+        return retval;
+    end initial_shadow;
+
+    signal shadow_ram   : shadow_array := initial_shadow;
     signal shadow_q     : std_logic_vector(word_length-1 downto 0) := (others => '0');
     signal read_pending : boolean := false;
 
@@ -129,6 +192,12 @@ architecture rtl of mproc_test is
     signal running       : boolean := false;
     signal latency       : unsigned(31 downto 0) := (others => '0');
     signal ready_count   : unsigned(31 downto 0) := (others => '0');
+
+    signal background        : std_logic_vector(31 downto 0) := (others => '0');
+    signal background_period : std_logic_vector(31 downto 0) := std_logic_vector(to_unsigned(1000, 32));
+    signal background_timer  : unsigned(31 downto 0) := (others => '0');
+    signal background_runs   : unsigned(31 downto 0) := (others => '0');
+    signal in_background     : boolean := false;
 
 begin
 
@@ -144,6 +213,9 @@ begin
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 3, std_logic_vector(ready_count));
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 4, std_logic_vector(latency));
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 5, std_logic_vector(to_unsigned(g_radix, 32)));
+            connect_data_to_address(bus_in, bus_out, g_base_address + 6, background);
+            connect_data_to_address(bus_in, bus_out, g_base_address + 7, background_period);
+            connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 8, std_logic_vector(background_runs));
 
             if write_is_requested_to_address(bus_in, g_base_address + 1) then
                 calculate(mproc_in, to_integer(unsigned(start_address(9 downto 0))));
@@ -155,9 +227,37 @@ begin
             if running then
                 latency <= latency + 1;
             end if;
-            if is_ready(mproc_out) then
+            if is_ready(mproc_out) and running then
                 running     <= false;
                 ready_count <= ready_count + 1;
+            end if;
+
+            -- the boost converter model every background_period clocks,
+            -- a run that falls on a busy processor waits for it
+            if write_is_requested_to_address(bus_in, g_base_address + 6)
+                and get_slv_data(bus_in)(0) = '1'
+            then
+                background_runs <= (others => '0');
+            end if;
+
+            background_timer <= background_timer + 1;
+            if background_timer + 1 >= unsigned(background_period) then
+                background_timer <= unsigned(background_period);
+            end if;
+
+            if background(0) = '1'
+                and background_timer + 1 >= unsigned(background_period)
+                and not mproc_out.is_busy and not in_background and not running
+                and not write_is_requested_to_address(bus_in, g_base_address + 1)
+            then
+                calculate(mproc_in, boost_converter);
+                in_background    <= true;
+                background_timer <= (others => '0');
+            end if;
+
+            if is_ready(mproc_out) and in_background then
+                in_background   <= false;
+                background_runs <= background_runs + 1;
             end if;
 
             -- the data ram : writes go to the controller, reads come from
@@ -176,7 +276,9 @@ begin
             end if;
 
             if reset = '1' then
-                running <= false;
+                running       <= false;
+                in_background <= false;
+                background    <= (others => '0');
             end if;
         end if;
     end process registers;
