@@ -234,11 +234,18 @@ are in the program RAM, the operands and results in the 128-word data RAM:
 | 139      | data RAM words, as far as the address fields reach (128)         | RO |
 | 140      | result latency L: an instruction reads a result written L or more instructions before it (7, plus 1 for each of the pre-adder and product registers, minus 1 without the data RAM's output register) | RO |
 | 141      | jump delay slots S: 3, or 2 without the program RAM's output register | RO |
+| 142      | the math unit's result latency, 0 without one                    | RO |
 | 256..383 | data RAM: writes go to the processor's RAM, reads come from a copy kept from its RAM writes | RW |
 | 384..511 | the data RAM words' bits above 31 (none at 32 bits)              | RW |
 
 A second instance has 36-bit data and 36-bit instructions at radix 24, the
-same programs and registers from 144 (144..157). Its instructions have 8-bit
+same programs and registers from 144 (144..158), and a math unit: the
+processor's `fixed_math` (`lut_divider` with a 512 × 18 bit table) beside
+`fixed_mult_add`, for division. Its result latency is 18, 1 less without the
+data RAM's output register and 4 more with the pre-adder and product
+registers; the scheduler keeps the two units' writes out of each other's
+clock. `test_uart.py` checks program 224 bit for bit against
+`lut_divide_model` with random operands. Its instructions have 8-bit
 address fields, so its data RAM is 256 words: bits 31..0 at 512..767 and
 bits 35..32 at 768..1023. A read from the high window gives a word's bits
 above 31 sign extended; a write there sets the bits above 31 of the next
@@ -254,6 +261,7 @@ models in `test_uart.py` follow the data width.
 | 32 | the low pass filter `lp_filter` y ← (u − y) · g + y on y = 96, u = 97, g = 98, repeated 100 times; 4 + S + 100 · L clock edges |
 | 128 | one Euler step of the averaged boost converter model from `ac_in_ac_out_lab_power_supply`'s `test_processor` v3; 3 + S + 3 · L clock edges |
 | 192 | (36-bit instance) `mpy_add` and `mpy_sub` on operands at 200..205 into 250, 251; 4 + S + L clock edges |
+| 224 | (36-bit instance, math unit) 112 ← 110 / 111, 113 ← 112 · 114 + 115, 116 ← 113 / 111 |
 
 The programs are written once, as their instructions in order, and laid out
 for each instance by the processor's `microprogram_assembler_pkg`
@@ -327,6 +335,15 @@ the program.
   instruction must read a result after its write clock; the processor's
   `fixed_point_result_latency()` counts that clock (see the processor's
   README).
+* **The AXC3000's math unit divider has 3 shifter stages.** With 2, the
+  36-bit `lut_divider`'s first normaliser stage (absolute value, leading
+  zero count and the first shift in one clock) missed 120 MHz by 0.07 ns.
+  `g_mproc_divider_shifter_stages => 3` takes 2 clocks more (math latency
+  20 instead of 18) for less logic in each stage. `axc3000/build.sh` now
+  fails on a negative slack in the timing summary and deletes the `.sof`,
+  as the Alchitry build refuses to write a bitstream; Quartus writes one
+  whatever the timing, and this violation passed the hardware test at room
+  temperature unnoticed.
 * **The Efinix `program` stages check their board is attached.** Efinity's
   `efx_run` program flow takes the first FTDI device it finds and drives JTAG
   over its pins, e.g. the Alchitry's UART channel. `ti60evm/build.sh program`
@@ -346,10 +363,10 @@ the program.
 
   | board | clock | RAM output register | DSP request registers | calculators | divider / √ | setup slack |
   |---|---|---|---|---|---|---|
-  | Ti60 EVM | 120 MHz | off | off | 4 | 10 | +2.97 ns |
-  | Alchitry Au+ (pre-adder and product registered) | 120 MHz | off | off | 6 | 14 | +0.44 ns |
-  | AXC3000 | 120 MHz | on | off | 5 | 11 | +1.13 ns |
-  | Trion T120 (pre-adder registered) | 60 MHz | on | on | 7 | 15 | +5.41 ns (Fmax 88.8 MHz) |
+  | Ti60 EVM | 120 MHz | off | off | 4 | 10 | +3.07 ns |
+  | Alchitry Au+ (pre-adder and product registered) | 120 MHz | off | off | 6 | 14 | +0.54 ns |
+  | AXC3000 | 120 MHz | on | off | 5 | 11 | +0.06 ns |
+  | Trion T120 (pre-adder registered) | 60 MHz | on | on | 7 | 15 | +5.31 ns (Fmax 88.0 MHz) |
 
   On the AXC3000 the M20K read register straight into a DSP misses 120 MHz
   by 0.41 ns, so it keeps the RAM output register. The Trion starts with

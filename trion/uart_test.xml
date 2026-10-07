@@ -30,6 +30,7 @@
         <efx:design_file name="../source/hVHDL_microprogam_processor/rtl/microprogram_interface_pkg.vhd" version="default" library="default" />
         <efx:design_file name="../source/hVHDL_microprogam_processor/rtl/execution_unit.vhd" version="default" library="default" />
         <efx:design_file name="../source/hVHDL_microprogam_processor/rtl/arch_fixed_mult_add.vhd" version="default" library="default" />
+        <efx:design_file name="../source/hVHDL_microprogam_processor/rtl/arch_fixed_math.vhd" version="default" library="default" />
         <efx:design_file name="../source/hVHDL_microprogam_processor/rtl/microprogram_sequencer.vhd" version="default" library="default" />
         <efx:design_file name="../source/hVHDL_microprogam_processor/rtl/microprogram_core.vhd" version="default" library="default" />
         <efx:design_file name="../source/git_hash_pkg.vhd" version="default" library="default" />

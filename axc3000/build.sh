@@ -18,7 +18,15 @@ case "${1:-build}" in
         # build.tcl only adds assignments to an existing project, start from
         # a fresh one so nothing stale from an earlier run carries over
         rm -f uart_test.qsf uart_test.qpf
-        exec "$QUARTUS_BIN/quartus_sh" -t build.tcl compile
+        "$QUARTUS_BIN/quartus_sh" -t build.tcl compile
+        # quartus writes the .sof whatever the timing, like the alchitry
+        # build fail on a negative slack and leave no .sof to program
+        if grep -qE '^Slack : -' output_files/uart_test.sta.summary; then
+            grep -B1 -A2 -E '^Slack : -' output_files/uart_test.sta.summary >&2
+            rm -f output_files/uart_test.sof
+            echo "timing not met, see output_files/uart_test.sta.rpt" >&2
+            exit 1
+        fi
         ;;
     program)
         exec ./program.sh output_files/uart_test.sof

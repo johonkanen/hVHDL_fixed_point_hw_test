@@ -47,6 +47,7 @@ set VHDL_SOURCES [list \
     "$MPROC_DIR/microprogram_interface_pkg.vhd" \
     "$MPROC_DIR/execution_unit.vhd" \
     "$MPROC_DIR/arch_fixed_mult_add.vhd" \
+    "$MPROC_DIR/arch_fixed_math.vhd" \
     "$MPROC_DIR/microprogram_sequencer.vhd" \
     "$MPROC_DIR/microprogram_core.vhd" \
     "$SOURCE_DIR/git_hash_pkg.vhd" \

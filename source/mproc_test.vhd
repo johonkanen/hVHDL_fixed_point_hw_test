@@ -23,6 +23,7 @@
 --        at least L instructions before it                        RO
 --   +13: jump delay slots S, 3 with the program ram's output
 --        register, 2 without                                      RO
+--   +14: the math unit's result latency, 0 without one            RO
 --
 -- the data ram, of g_word_length bits, from g_ram_base_address, bits
 -- 31..0 :
@@ -58,6 +59,8 @@
 --   192: with 8 bit address fields or more, operands and results
 --        above 127 : mpy_add 250 <- 200 * 201 + 202,
 --        mpy_sub 251 <- 203 * 204 - 205, 4 + S + L clocks
+--   224: with the math unit, 112 <- 110 / 111, then
+--        113 <- 112 * 114 + 115 and 116 <- 113 / 111
 --   128: one time step of an averaged boost converter, 3 + S + 3 * L clocks (the
 --        ac_in_ac_out_lab_power_supply test_processor v3 model), the
 --        inductor current i and capacitor voltage u from the input
@@ -102,6 +105,10 @@ entity mproc_test is
         -- the processor's rams' output registers, microprogram_core's
         ;g_program_ram_output_register : boolean := true
         ;g_data_ram_output_register    : boolean := true
+        -- a fixed_math unit (division) beside fixed_mult_add, and its
+        -- divider's shifter stages
+        ;g_math_unit : boolean := false
+        ;g_divider_shifter_stages : positive := 2
     );
     port (
         clock    : in std_logic
@@ -135,13 +142,27 @@ architecture rtl of mproc_test is
     constant boost : boost_converter_map := boost_converter_at(100);
     constant boost_converter : natural := 128;
 
+    -- the math unit writes later than the multiply-adds, the instruction
+    -- pipeline reaches its result stage
+    function choose_math_latency return natural is
+    begin
+        if g_math_unit then
+            return fixed_math_result_latency(g_pre_add_register, g_product_register, g_data_ram_output_register,
+                g_divider_shifter_stages);
+        end if;
+        return 0;
+    end choose_math_latency;
+    constant math_latency  : natural := choose_math_latency;
+    constant pipeline_high : natural := maximum(12, math_latency);
+
     -- the programs, laid out for this instance's configuration
     constant config : processor_config := (
         instruction_width => instruction_length
         ,data_width       => word_length
         ,radix            => g_radix
         ,result_latency   => fixed_point_result_latency(g_pre_add_register, g_product_register, g_data_ram_output_register)
-        ,delay_slots      => jump_delay_slots(g_program_ram_output_register));
+        ,delay_slots      => jump_delay_slots(g_program_ram_output_register)
+        ,math_latency     => math_latency);
 
     constant one_of_each : microprogram := (
          mi(mpy_add          , 1 , 64 , 65 , 66)
@@ -157,6 +178,11 @@ architecture rtl of mproc_test is
 
     constant low_pass_filter : microprogram := (0 => mi(lp_filter, 96, 97, 96, 98));
 
+    constant divisions : microprogram := (
+         mi_div(112, 110, 111)
+        ,mi(mpy_add, 113, 112, 114, 115)
+        ,mi_div(116, 113, 111));
+
     constant high_addresses : microprogram := (
          mi(mpy_add , 250 , 200 , 201 , 202)
         ,mi(mpy_sub , 251 , 203 , 204 , 205));
@@ -169,6 +195,9 @@ architecture rtl of mproc_test is
         retval := place(retval, boost_converter, schedule(config, boost_converter_step(boost)) & mi(program_end));
         if address_bits(instruction_length) >= 8 then
             retval := place(retval, 192, schedule(config, high_addresses) & mi(program_end));
+        end if;
+        if g_math_unit then
+            retval := place(retval, 224, schedule(config, divisions) & mi(program_end));
         end if;
         return retval;
     end make_program;
@@ -188,7 +217,7 @@ architecture rtl of mproc_test is
     constant unit_in_ref : execution_unit_in_record := (
         instr_ram_read_out => instr_ref_subtype.ram_read_out
         ,data_read_out     => ref_subtype.ram_read_out
-        ,instr_pipeline    => (0 to 12 => encode(mi(nop), instruction_length))
+        ,instr_pipeline    => (0 to pipeline_high => encode(mi(nop), instruction_length))
     );
     constant unit_out_ref : execution_unit_out_record := (
         data_read_in  => ref_subtype.ram_read_in
@@ -197,6 +226,8 @@ architecture rtl of mproc_test is
 
     signal unit_in  : unit_in_ref'subtype  := unit_in_ref;
     signal unit_out : unit_out_ref'subtype := unit_out_ref;
+    signal mult_add_out : unit_out_ref'subtype := unit_out_ref;
+    signal math_out     : unit_out_ref'subtype := unit_out_ref;
 
     type shadow_array is array (0 to ram_size-1) of std_logic_vector(word_length-1 downto 0);
 
@@ -266,6 +297,7 @@ begin
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 11, std_logic_vector(to_unsigned(ram_size, 32)));
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 12, std_logic_vector(to_unsigned(config.result_latency, 32)));
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 13, std_logic_vector(to_unsigned(config.delay_slots, 32)));
+            connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 14, std_logic_vector(to_unsigned(config.math_latency, 32)));
 
             if write_is_requested_to_address(bus_in, g_base_address + 1) then
                 calculate(mproc_in, to_integer(unsigned(start_address(9 downto 0))));
@@ -358,7 +390,24 @@ begin
     port map (
         clock            => clock
         ,unit_in         => unit_in
-        ,unit_out        => unit_out
+        ,unit_out        => mult_add_out
     );
+
+    no_math : if not g_math_unit generate
+        unit_out <= mult_add_out;
+    end generate;
+
+    math : if g_math_unit generate
+        u_fixed_math : entity work.execution_unit(fixed_math)
+        generic map (g_radix => g_radix, g_pre_add_register => g_pre_add_register, g_product_register => g_product_register
+            ,g_data_ram_output_register => g_data_ram_output_register, g_divider_shifter_stages => g_divider_shifter_stages)
+        port map (
+            clock            => clock
+            ,unit_in         => unit_in
+            ,unit_out        => math_out
+        );
+
+        unit_out <= merge_units(mult_add_out, math_out);
+    end generate;
 
 end architecture rtl;

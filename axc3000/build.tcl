@@ -71,6 +71,7 @@ set_global_assignment -name VHDL_FILE $source_dir/hVHDL_microprogam_processor/ex
 set_global_assignment -name VHDL_FILE $mproc_dir/microprogram_interface_pkg.vhd
 set_global_assignment -name VHDL_FILE $mproc_dir/execution_unit.vhd
 set_global_assignment -name VHDL_FILE $mproc_dir/arch_fixed_mult_add.vhd
+set_global_assignment -name VHDL_FILE $mproc_dir/arch_fixed_math.vhd
 set_global_assignment -name VHDL_FILE $mproc_dir/microprogram_sequencer.vhd
 set_global_assignment -name VHDL_FILE $mproc_dir/microprogram_core.vhd
 set_global_assignment -name VHDL_FILE $source_dir/git_hash_pkg.vhd

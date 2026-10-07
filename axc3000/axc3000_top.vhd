@@ -73,6 +73,9 @@ begin
         ,g_dsp_request_register => false        -- the microprogram processors' rams without their output registers
         ,g_mproc_program_ram_output_register => false
         ,g_mproc_data_ram_output_register    => false
+        -- the 36 bit divider's first normaliser stage missed 120 MHz by
+        -- 0.07 ns with 2 shifter stages
+        ,g_mproc_divider_shifter_stages      => 3
     )
     port map (
         clock                    => core_clock

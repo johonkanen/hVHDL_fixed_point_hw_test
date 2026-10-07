@@ -70,13 +70,15 @@ Register map (source/hw_test_core.vhd) :
     137 data word width   138 instruction width   139 data ram words  RO
     140 result latency L : the programs are scheduled for it      RO
     141 jump delay slots S, 2 without the program ram's register    RO
+    142 the math unit's result latency, 0 without one               RO
         run times 0 : 12 + S + L, 32 : 4 + S + 100 L,
         128 : 3 + S + 3 L, 192 : 4 + S + L
     384..511 the data ram's bits above 31 (none at 32 bits)          RW
 
     the same with 36 bit data and instructions (8 bit address fields,
-    a 256 word data ram) at radix 24 :
-    144..157 registers   512..767 data ram bits 31..0   768..1023 bits 35..32
+    a 256 word data ram) at radix 24 and a math unit (division, program
+    224 : 112 <- 110 / 111, 113 <- 112 * 114 + 115, 116 <- 113 / 111) :
+    144..158 registers   512..767 data ram bits 31..0   768..1023 bits 35..32
     256..383 data ram : write -> the ram, read <- a copy of it       RW
     base +0 input   +1 write -> one request   +2 result               RW/WO/RO
          +3 latency, request at the input to ready, clock edges     RO
@@ -850,6 +852,8 @@ class Mproc:
         self.latency = uart.read(base + 12)
         # the jump delay slots, 2 without the program ram's output register
         self.slots = uart.read(base + 13)
+        # the math unit's result latency, 0 without one
+        self.math_latency = uart.read(base + 14)
 
     def write(self, address, value):
         if self.w > 32:
@@ -940,7 +944,43 @@ def run_mproc(mp, rounds, r):
         r.check(f"program 192 ready once in {4 + slots + latency} clock edges", all(run == (1, 4 + slots + latency) for run in runs),
                 f"ready pulses, clock edges {sorted(set(runs))}")
 
+    if mp.math_latency:
+        run_math_unit(mp, r)
+
     run_boost_converter(mp, r)
+
+
+# the math unit's lut_divider table : 512 x 18 bits at radix 16, 18 bit x_frac
+MATH_TABLE = (9, 18, 16, 18)
+
+
+def run_math_unit(mp, r):
+    """program 224 : 112 <- 110 / 111, 113 <- 112 * 114 + 115,
+    116 <- 113 / 111"""
+    w, radix = mp.w, mp.radix
+    print(f"        math unit, result latency {mp.math_latency}")
+
+    def divide(n, d):
+        return lut_divide_model(n, d, radix, w, MATH_TABLE)
+
+    wrong, runs = [], []
+    for _ in range(20):
+        n = wrap(r.random.getrandbits(w), w)
+        d = 0
+        while d == 0:
+            d = wrap(r.random.getrandbits(w), w) >> r.random.randint(0, w - 2)
+        b, c = (wrap(r.random.getrandbits(w), w) for _ in range(2))
+        for k, v in ((110, n), (111, d), (114, b), (115, c)):
+            mp.write(k, v)
+        runs.append(mp.run(224))
+        q = divide(n, d)
+        p = mult_add_model(q, b, c, radix, w)
+        expected = [q, p, divide(p, d)]
+        got = [mp.read(112), mp.read(113), mp.read(116)]
+        if got != expected:
+            wrong.append(f"{n} / {d} : {got} expected {expected}")
+    r.check("20 runs of program 224, divisions and a multiply-add between them", not wrong, ", ".join(wrong[:2]))
+    r.check("program 224 ready once", all(run[0] == 1 for run in runs), f"ready pulses {sorted(set(run[0] for run in runs))}")
 
 
 def run_boost_converter(mp, r):

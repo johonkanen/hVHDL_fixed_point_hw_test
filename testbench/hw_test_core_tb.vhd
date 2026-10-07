@@ -26,6 +26,7 @@ entity hw_test_core_tb is
       ;product_register : boolean := false
       ;mproc_program_ram_register : boolean := true
       ;mproc_data_ram_register    : boolean := true
+      ;mproc_divider_shifter_stages : positive := 2
       ;ram_output_register : boolean := true
       ;dsp_request_register : boolean := true
       -- the core's lut_divider table (its g_divider_* defaults)
@@ -193,6 +194,7 @@ begin
         variable i_state, u_state : std_logic_vector(31 downto 0);
         type word36_array is array (natural range <>) of signed(35 downto 0);
         variable operands36 : word36_array(64 to 87);
+        variable quotient36, product36 : signed(35 downto 0);
         type word_array is array (natural range <>) of std_logic_vector(31 downto 0);
         variable operands     : word_array(64 to 87);
 
@@ -691,6 +693,30 @@ begin
         check_word36(250, mult_add36(operands36(64), operands36(65), operands36(66)));
         check_word36(251, mult_add36(operands36(67), operands36(68), operands36(69), subtract => true));
 
+        -- program 224 : the math unit, 112 <- 110 / 111,
+        -- 113 <- 112 * 114 + 115, 116 <- 113 / 111
+        check_register(mproc_base + 14, 0);
+        check_register(mproc36_base + 14, work.execution_unit_pkg.fixed_math_result_latency(
+            pre_add_register, product_register, mproc_data_ram_register, mproc_divider_shifter_stages));
+        write_word36(110, to_signed(5 * 2**23, 36));       --  2.5 at radix 24
+        write_word36(111, to_signed(-3 * 2**22, 36));      -- -0.75
+        write_word36(114, signed(x(3 downto 0)) & signed(y));
+        write_word36(115, to_signed(7 * 2**20, 36));
+        write_register(mproc36_base, 224);
+        write_register(mproc36_base + 1, 1);
+        for k in 1 to 20 loop
+            read_register(mproc36_base + 2, data1);
+            exit when data1 = x"00000000";
+        end loop;
+        check_register(mproc36_base + 3, 1);
+        quotient36 := lut_divide(to_signed(5 * 2**23, 36), to_signed(-3 * 2**22, 36), mproc36_radix
+            , divider_point_lut, divider_slope_lut, divider_table_radix, divider_x_frac_width);
+        check_word36(112, quotient36);
+        product36 := mult_add36(quotient36, signed(x(3 downto 0)) & signed(y), to_signed(7 * 2**20, 36));
+        check_word36(113, product36);
+        check_word36(116, lut_divide(product36, to_signed(-3 * 2**22, 36), mproc36_radix
+            , divider_point_lut, divider_slope_lut, divider_table_radix, divider_x_frac_width));
+
         info("boost converter after " & integer'image(to_integer(unsigned(data1))) & " background steps : i "
             & real'image(real(to_integer(signed(i_state))) / 2.0**mproc_radix) & " u "
             & real'image(real(to_integer(signed(u_state))) / 2.0**mproc_radix));
@@ -758,6 +784,7 @@ begin
         ,g_dsp_product_register => product_register
         ,g_mproc_program_ram_output_register => mproc_program_ram_register
         ,g_mproc_data_ram_output_register    => mproc_data_ram_register
+        ,g_mproc_divider_shifter_stages      => mproc_divider_shifter_stages
         ,g_ram_output_register  => ram_output_register
         ,g_dsp_request_register => dsp_request_register
         ,g_divider_index_width       => divider_index_width
