@@ -64,12 +64,20 @@
 --   112..124 : see sqrt_sweep.vhd, the sqrt table from the g_root_*
 --              generics
 --
+--   125 : 1 when g_dsp_product_register is set, every fixed_dsp one clock
+--         longer                                                RO
+--
 -- hVHDL_microprogam_processor's microprogram_core with
 -- execution_unit(fixed_mult_add) on a fixed_dsp with the same pre-add option,
 -- 32 bit data at radix 20 :
 --
---   128..133 : see mproc_test.vhd
---   256..383 : its data ram
+--   128..138 : see mproc_test.vhd
+--   256..383 : its data ram, 384..511 the bits above 31 (none)
+--
+-- a second one with 36 bit data and instructions at radix 24 :
+--
+--   144..154 : see mproc_test.vhd
+--   512..639 : its data ram bits 31..0, 640..767 bits 35..32
 --
 -- fixed_dsp recomputes its result register on every clock, the core drives
 -- init_fixed_dsp while idle so an accumulate only carries across back to
@@ -90,6 +98,9 @@ entity hw_test_core is
         ;g_clock_frequency_hz : natural := 120_000_000
         ;g_dsp_word_length    : natural := 32 -- 2..32
         ;g_dsp_pre_add_register : boolean := false -- fixed_dsp g_pre_add_register
+        -- fixed_dsp g_product_register in every fixed_dsp, one clock more
+        -- in each
+        ;g_dsp_product_register : boolean := false
         -- dual_port_ram's output register in the lookup tables, off takes a
         -- clock off every calculator, the divider and the square root
         ;g_ram_output_register  : boolean := true
@@ -138,6 +149,7 @@ architecture rtl of hw_test_core is
     signal bus_from_divider        : fpga_interconnect_record := init_fpga_interconnect;
     signal bus_from_root           : fpga_interconnect_record := init_fpga_interconnect;
     signal bus_from_mproc          : fpga_interconnect_record := init_fpga_interconnect;
+    signal bus_from_mproc36        : fpga_interconnect_record := init_fpga_interconnect;
 
     signal loopback_register : std_logic_vector(31 downto 0) := (others => '0');
     signal read_counter      : unsigned(31 downto 0) := (others => '0');
@@ -247,6 +259,7 @@ begin
             connect_read_only_data_to_address(bus_from_communications, bus_from_top, 5, std_logic_vector(to_unsigned(g_board_id, 32)));
             connect_read_only_data_to_address(bus_from_communications, bus_from_top, 6, std_logic_vector(to_unsigned(g_clock_frequency_hz, 32)));
             connect_read_only_data_to_address(bus_from_communications, bus_from_top, 7, std_logic_vector(clock_counter));
+            connect_read_only_data_to_address(bus_from_communications, bus_from_top, 125, std_logic_vector(to_unsigned(boolean'pos(g_dsp_product_register), 32)));
 
             if data_is_requested_from_address(bus_from_communications, 4) then
                 read_counter <= read_counter + 1;
@@ -260,7 +273,7 @@ begin
                 write_data_to_address(bus_from_top, 0, register_bank(bank_index));
             end if;
 
-            bus_to_communications <= bus_from_top and bus_from_dsp and bus_from_sine and bus_from_reciprocal and bus_from_sqrt and bus_from_divider and bus_from_root and bus_from_mproc;
+            bus_to_communications <= bus_from_top and bus_from_dsp and bus_from_sine and bus_from_reciprocal and bus_from_sqrt and bus_from_divider and bus_from_root and bus_from_mproc and bus_from_mproc36;
 
             if system_reset = '1' then
                 loopback_register     <= (others => '0');
@@ -362,7 +375,7 @@ begin
     end process dsp_test;
 
     u_fixed_dsp : entity work.fixed_dsp(rtl)
-    generic map (g_pre_add_register => g_dsp_pre_add_register)
+    generic map (g_pre_add_register => g_dsp_pre_add_register, g_product_register => g_dsp_product_register)
     port map (
         clock          => clock
         ,fixed_dsp_in  => dsp_in
@@ -398,7 +411,7 @@ begin
     );
 
     u_sine_dsp : entity work.fixed_dsp(rtl)
-    generic map (g_pre_add_register => g_dsp_pre_add_register)
+    generic map (g_pre_add_register => g_dsp_pre_add_register, g_product_register => g_dsp_product_register)
     port map (
         clock          => clock
         ,fixed_dsp_in  => sine_dsp_in
@@ -434,7 +447,7 @@ begin
     );
 
     u_reciprocal_dsp : entity work.fixed_dsp(rtl)
-    generic map (g_pre_add_register => g_dsp_pre_add_register)
+    generic map (g_pre_add_register => g_dsp_pre_add_register, g_product_register => g_dsp_product_register)
     port map (
         clock          => clock
         ,fixed_dsp_in  => reciprocal_dsp_in
@@ -470,7 +483,7 @@ begin
     );
 
     u_sqrt_dsp : entity work.fixed_dsp(rtl)
-    generic map (g_pre_add_register => g_dsp_pre_add_register)
+    generic map (g_pre_add_register => g_dsp_pre_add_register, g_product_register => g_dsp_product_register)
     port map (
         clock          => clock
         ,fixed_dsp_in  => sqrt_dsp_in
@@ -487,6 +500,7 @@ begin
         ,g_table_radix       => g_divider_table_radix
         ,g_x_frac_width      => g_divider_x_frac_width
         ,g_pre_add_register => g_dsp_pre_add_register
+        ,g_product_register => g_dsp_product_register
         ,g_ram_output_register => g_ram_output_register
         ,g_dsp_request_register => g_dsp_request_register
     )
@@ -507,6 +521,7 @@ begin
         ,g_table_radix       => g_root_table_radix
         ,g_x_frac_width      => g_root_x_frac_width
         ,g_pre_add_register => g_dsp_pre_add_register
+        ,g_product_register => g_dsp_product_register
         ,g_ram_output_register => g_ram_output_register
         ,g_dsp_request_register => g_dsp_request_register
     )
@@ -519,13 +534,26 @@ begin
 
 ------------------------------------------------------------------------
     u_mproc_test : entity work.mproc_test
-    generic map (g_base_address => 128, g_ram_base_address => 256
-        ,g_pre_add_register => g_dsp_pre_add_register)
+    generic map (g_base_address => 128, g_ram_base_address => 256, g_ram_high_base_address => 384
+        ,g_pre_add_register => g_dsp_pre_add_register
+        ,g_product_register => g_dsp_product_register)
     port map (
         clock    => clock
         ,reset   => system_reset
         ,bus_in  => bus_from_communications
         ,bus_out => bus_from_mproc
+    );
+
+    u_mproc36_test : entity work.mproc_test
+    generic map (g_base_address => 144, g_ram_base_address => 512, g_ram_high_base_address => 640
+        ,g_word_length => 36, g_instruction_length => 36, g_radix => 24
+        ,g_pre_add_register => g_dsp_pre_add_register
+        ,g_product_register => g_dsp_product_register)
+    port map (
+        clock    => clock
+        ,reset   => system_reset
+        ,bus_in  => bus_from_communications
+        ,bus_out => bus_from_mproc36
     );
 
 end architecture rtl;

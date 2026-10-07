@@ -124,13 +124,14 @@ chip select `GPIOL_00`, data in `GPIOL_08`, data out `GPIOL_09`, and
 | 37     | control: bit 0 pre_subtract, 1 post_subtract, 2 invert, 3 accumulate | RW |
 | 38     | write N → N back-to-back `fmac` requests (0 counts as 1)         | WO |
 | 39, 40 | result low, high word, captured on ready                         | RO |
-| 41     | clock edges from the request at `fixed_dsp`'s input to ready (2, or 3 with the pre-adder registered) | RO |
+| 41     | clock edges from the request at `fixed_dsp`'s input to ready: 2 + pre-adder register + product register | RO |
 | 42     | ready pulses of the last command                                 | RO |
 | 43     | write → accumulator reset request                                | WO |
 | 44     | dsp word length                                                  | RO |
 | 45     | 1 when the pre-adder is registered (`g_dsp_pre_add_register`)    | RO |
 | 46     | 1 when the lookup table RAMs have their output register (`g_ram_output_register`) | RO |
 | 47     | 1 when the requests to the lookup tables' and the divider's / square root's DSPs are registered (`g_dsp_request_register`) | RO |
+| 125    | 1 when every `fixed_dsp` registers its product before the result adder (`g_dsp_product_register`, the `fixed_dsp` generic `g_product_register`), one clock more each | RO |
 
 `sine_calculator`, `reciprocal_calculator` and `sqrt_calculator`, each with its own `fixed_dsp`
 (same width and pre-adder option), tested through `source/lut_sweep.vhd`.
@@ -147,7 +148,7 @@ Both take a 16-bit input and give a 16-bit result:
 | base + 0 | input                                                            | RW |
 | base + 1 | write → one request for the input in base + 0                    | WO |
 | base + 2 | last result, sign extended (sine) or zero extended (1/x, √x)     | RO |
-| base + 3 | clock edges from the request at the input to ready: 4 + pre-adder register + RAM output register + DSP request register | RO |
+| base + 3 | clock edges from the request at the input to ready: 4 + pre-adder register + product register + RAM output register + DSP request register | RO |
 | base + 4 | write N → sweep N inputs from base + 5 upwards, one per clock (0 = 65536) | WO |
 | base + 5 | sweep start input                                                | RW |
 | base + 6, 7 | sweep checksums: s1 += result, s2 += s1                       | RO |
@@ -170,7 +171,7 @@ the first wrong input.
 | 96, 97    | numerator, denominator (also the sweep seeds)                   | RW |
 | 98        | write → one division                                            | WO |
 | 99, 100   | last quotient, last division_by_zero                            | RO |
-| 101       | clock edges from the request to ready: 10 + 2 × pre-adder register + RAM output register + 2 × DSP request register | RO |
+| 101       | clock edges from the request to ready: 10 + 2 × pre-adder register + 2 × product register + RAM output register + 2 × DSP request register | RO |
 | 102       | write N → sweep N divisions, one per clock (0 = 65536)          | WO |
 | 103       | sweep mode: bit 0 = 0 fixed numerator and denominator +1 per division, bit 0 = 1 operands from two 32-bit Galois LFSRs (x >> 1 xor 0x80200003) with the denominator shifted right by 0..31, bit 1 irregular gaps | RW |
 | 104, 105  | sweep checksums: s1 += quotient, s2 += s1                       | RO |
@@ -192,7 +193,7 @@ entries × 18 bits at radix 17 with an 18-bit `x_frac`, the `g_root_*` generics)
 | 112       | radicand (also the sweep start / LFSR seed)                     | RW |
 | 113       | write → one square root                                         | WO |
 | 114       | last root                                                       | RO |
-| 115       | clock edges from the request to ready: 10 + 2 × pre-adder register + RAM output register + 2 × DSP request register | RO |
+| 115       | clock edges from the request to ready: 10 + 2 × pre-adder register + 2 × product register + RAM output register + 2 × DSP request register | RO |
 | 116       | write N → sweep N roots, one per clock (0 = 65536)              | WO |
 | 117       | sweep mode: bit 0 = 0 radicand +1 per root, bit 0 = 1 radicands from a 32-bit Galois LFSR (x >> 1 xor 0x80200003) shifted right by their own low 5 bits, bit 1 irregular gaps | RW |
 | 118, 119  | sweep checksums: s1 += root, s2 += s1                           | RO |
@@ -215,7 +216,7 @@ operands with every flag combination and bursts of up to 300.
 
 The microprogram processor: `hVHDL_microprogam_processor`'s
 `microprogram_core` with `execution_unit(fixed_mult_add)` on a `fixed_dsp`
-(with the core's pre-adder register option), 32-bit data at radix 20, through `source/mproc_test.vhd`, registers from 128. The programs
+(with the core's pre-adder and product register options), 32-bit data at radix 20, through `source/mproc_test.vhd`, registers from 128. The programs
 are in the program RAM, the operands and results in the 128-word data RAM:
 
 | addr     | contents                                                         |    |
@@ -229,7 +230,18 @@ are in the program RAM, the operands and results in the 128-word data RAM:
 | 134      | bit 0: run the boost converter model (program 128) in the background | RW |
 | 135      | clock edges from one background run to the next (default 1000)   | RW |
 | 136      | background runs since bit 0 of 134 was last set                  | RO |
+| 137, 138 | data word width, instruction width (32, 32)                      | RO |
 | 256..383 | data RAM: writes go to the processor's RAM, reads come from a copy kept from its RAM writes | RW |
+| 384..511 | the data RAM words' bits above 31 (none at 32 bits)              | RW |
+
+A second instance has 36-bit data and 36-bit instructions at radix 24, the
+same programs and registers from 144 (144..154), its data RAM's bits 31..0
+at 512..639 and bits 35..32 at 640..767. A read from the high window gives
+a word's bits above 31 sign extended; a write there sets the bits above 31
+of the next word written to the low window, so a 36-bit word is written
+high part first. The instructions keep their fields in bits 31..0 and the
+programs are 32-bit instructions zero extended; the data path, `fixed_dsp`
+36×36 bits and the models in `test_uart.py` follow the width.
 
 | program | contents |
 |--------:|----------|
@@ -258,8 +270,8 @@ program from 129.
 
 `fixed_mult_add` gives bits radix + 31 … radix of a · b ± c · 2^radix; the
 sums, differences and −a wrap to 32 bits in `fixed_dsp`'s pre-adder. The
-pre-adder register adds a clock before a result is in the data RAM, not to
-the run times. `test_uart.py` checks both
+pre-adder and product registers each add a clock before a result is in the
+data RAM, not to the run times. `test_uart.py` checks both
 programs bit for bit against a model, with random and edge-case operands,
 and their run times. For the boost converter it checks host-run steps at
 random operating points and a background run replayed for the number of
@@ -277,10 +289,12 @@ the program.
   which adds a register between the pre-adder and the multiplier: +0.39 ns at
   120 MHz, latency 3.
   The result adder after the cascaded multiply, a 64-bit carry chain in
-  fabric, stays within a few hundred ps of 120 MHz, and placement changes
-  elsewhere in the design can push it over. `alchitry/build.tcl` runs
-  `phys_opt_design` again after `route_design` for it, and stops before
-  writing a bitstream if timing is not met.
+  fabric, was then within a few hundred ps of 120 MHz and missed it after
+  unrelated changes, so the Alchitry also sets `g_dsp_product_register`
+  (`fixed_dsp`'s `g_product_register`), a register between the multiply and
+  the result adder, one more clock in every `fixed_dsp`.
+  `alchitry/build.tcl` also runs `phys_opt_design` again after
+  `route_design` and stops before writing a bitstream if timing is not met.
 * **The Efinix `program` stages check their board is attached.** Efinity's
   `efx_run` program flow takes the first FTDI device it finds and drives JTAG
   over its pins, e.g. the Alchitry's UART channel. `ti60evm/build.sh program`
@@ -300,10 +314,10 @@ the program.
 
   | board | clock | RAM output register | DSP request registers | calculators | divider / √ | setup slack |
   |---|---|---|---|---|---|---|
-  | Ti60 EVM | 120 MHz | off | off | 4 | 10 | +3.21 ns |
-  | Alchitry Au+ (pre-adder registered) | 120 MHz | off | off | 5 | 12 | +0.05 ns |
-  | AXC3000 | 120 MHz | on | off | 5 | 11 | +1.07 ns |
-  | Trion T120 (pre-adder registered) | 60 MHz | on | on | 7 | 15 | +6.20 ns (Fmax 95.6 MHz) |
+  | Ti60 EVM | 120 MHz | off | off | 4 | 10 | +2.85 ns |
+  | Alchitry Au+ (pre-adder and product registered) | 120 MHz | off | off | 6 | 14 | +0.65 ns |
+  | AXC3000 | 120 MHz | on | off | 5 | 11 | +0.44 ns |
+  | Trion T120 (pre-adder registered) | 60 MHz | on | on | 7 | 15 | +6.50 ns (Fmax 98.3 MHz) |
 
   On the AXC3000 the M20K read register straight into a DSP misses 120 MHz
   by 0.41 ns, so it keeps the RAM output register. The Trion starts with

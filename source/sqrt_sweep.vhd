@@ -42,6 +42,7 @@ entity sqrt_sweep is
         ;g_table_radix       : natural := 15
         ;g_x_frac_width      : natural := 16
         ;g_pre_add_register : boolean
+        ;g_product_register : boolean := false
         ;g_ram_output_register : boolean := true
         ;g_dsp_request_register : boolean := true
     );
@@ -186,6 +187,7 @@ begin
         ,g_table_radix       => g_table_radix
         ,g_x_frac_width      => g_x_frac_width
         ,g_pre_add_register => g_pre_add_register
+        ,g_product_register => g_product_register
         ,g_ram_output_register => g_ram_output_register
         ,g_dsp_request_register => g_dsp_request_register
     )

@@ -23,6 +23,7 @@ entity hw_test_core_tb is
       ;use_spi         : boolean  := false
       ;spi_half_period : positive := 4
       ;pre_add_register : boolean := false
+      ;product_register : boolean := false
       ;ram_output_register : boolean := true
       ;dsp_request_register : boolean := true
       -- the core's lut_divider table (its g_divider_* defaults)
@@ -188,6 +189,8 @@ begin
         variable data1, data2 : std_logic_vector(31 downto 0);
         variable x, y         : std_logic_vector(31 downto 0);
         variable i_state, u_state : std_logic_vector(31 downto 0);
+        type word36_array is array (natural range <>) of signed(35 downto 0);
+        variable operands36 : word36_array(64 to 87);
         type word_array is array (natural range <>) of std_logic_vector(31 downto 0);
         variable operands     : word_array(64 to 87);
 
@@ -398,6 +401,39 @@ begin
             return std_logic_vector(to_signed(integer(x * 2.0**mproc_radix), 32));
         end to_fixed;
 
+        -- the 36 bit processor : data through the high and low windows
+        constant mproc36_base      : natural := 144;
+        constant mproc36_ram       : natural := 512;
+        constant mproc36_ram_high  : natural := 640;
+        constant mproc36_radix     : natural := 24;
+        subtype word36 is signed(35 downto 0);
+
+        procedure write_word36 (address : natural; value : word36) is
+        begin
+            write_register(mproc36_ram_high + address, std_logic_vector(resize(value(35 downto 32), 32)));
+            write_register(mproc36_ram + address, std_logic_vector(value(31 downto 0)));
+        end write_word36;
+
+        procedure check_word36 (address : natural; expected : word36) is
+            variable low, high : std_logic_vector(31 downto 0);
+        begin
+            read_register(mproc36_ram + address, low);
+            read_register(mproc36_ram_high + address, high);
+            check_equal(std_logic_vector(resize(signed(high), 4)) & low, std_logic_vector(expected),
+                "36 bit data ram " & integer'image(address));
+        end check_word36;
+
+        function mult_add36 (a, b, c : word36; subtract : boolean := false) return word36 is
+            variable result : signed(71 downto 0);
+        begin
+            if subtract then
+                result := a * b - shift_left(resize(c, 72), mproc36_radix);
+            else
+                result := a * b + shift_left(resize(c, 72), mproc36_radix);
+            end if;
+            return result(mproc36_radix + 35 downto mproc36_radix);
+        end mult_add36;
+
         -- n steps of mproc_test's boost converter model, program 128
         procedure boost_steps (n : natural; i, u : inout std_logic_vector(31 downto 0);
             vin, d, load, r, i_gain, u_gain : std_logic_vector(31 downto 0)) is
@@ -451,7 +487,8 @@ begin
         write_register(38, 1);
         check_register(39, 31);
         check_register(40, 0);
-        check_register(41, 2 + boolean'pos(pre_add_register)); -- fixed_dsp(rtl) pipeline depth
+        check_register(41, 2 + boolean'pos(pre_add_register) + boolean'pos(product_register)); -- fixed_dsp(rtl) pipeline depth
+        check_register(125, boolean'pos(product_register));
         check_register(45, boolean'pos(pre_add_register));
         check_register(46, boolean'pos(ram_output_register));
         check_register(47, boolean'pos(dsp_request_register));
@@ -492,7 +529,7 @@ begin
             for i in 0 to 15 loop
                 check_single(calculator_bases(b), i * 4099);
             end loop;
-            check_register(calculator_bases(b) + 3, 4 + boolean'pos(ram_output_register) + boolean'pos(dsp_request_register) + boolean'pos(pre_add_register));
+            check_register(calculator_bases(b) + 3, 4 + boolean'pos(ram_output_register) + boolean'pos(dsp_request_register) + boolean'pos(pre_add_register) + boolean'pos(product_register));
 
             check_sweep(calculator_bases(b), start => 0, count => 2**16, mode => 0);
             check_sweep(calculator_bases(b), start => 0, count => 2**16, mode => 1);
@@ -598,6 +635,37 @@ begin
         boost_steps(to_integer(unsigned(data1)), i_state, u_state, to_fixed(10.0), to_fixed(0.5), to_fixed(0.25), to_fixed(0.8), to_fixed(0.7 / 3.0), to_fixed(0.7 / 3.0));
         check_register(mproc_ram_base + 106, i_state);
         check_register(mproc_ram_base + 107, u_state);
+        -- the 36 bit processor, program 0, operands over the full 36 bits
+        check_register(mproc36_base + 5, mproc36_radix);
+        check_register(mproc36_base + 9, 36);
+        check_register(mproc36_base + 10, 36);
+        x := x"0badcafe";
+        for k in 64 to 87 loop
+            x := galois_step(x);
+            y := galois_step(x);
+            operands36(k) := signed(y(3 downto 0)) & signed(x);
+            write_word36(k, operands36(k));
+        end loop;
+        operands36(70) := (35 => '1', others => '0'); -- -2**35, the pre-adder wraps
+        write_word36(70, operands36(70));
+        check_word36(70, operands36(70));
+        write_register(mproc36_base, 0);
+        write_register(mproc36_base + 1, 1);
+        for k in 1 to 20 loop
+            read_register(mproc36_base + 2, data1);
+            exit when data1 = x"00000000";
+        end loop;
+        check_register(mproc36_base + 3, 1);
+        check_register(mproc36_base + 4, 16);
+        check_word36(1, mult_add36(operands36(64), operands36(65), operands36(66)));
+        check_word36(2, mult_add36(operands36(67), operands36(68), operands36(69), subtract => true));
+        check_word36(3, mult_add36(-operands36(70), operands36(71), operands36(72)));
+        check_word36(4, mult_add36(-operands36(73), operands36(74), operands36(75), subtract => true));
+        check_word36(5, mult_add36(operands36(76) + operands36(77), operands36(78), (others => '0')));
+        check_word36(6, mult_add36(operands36(79) - operands36(80), operands36(81), (others => '0')));
+        check_word36(7, mult_add36(operands36(82) - operands36(83), operands36(84), operands36(83)));
+        check_word36(8, operands36(85) + operands36(86) + operands36(87));
+
         info("boost converter after " & integer'image(to_integer(unsigned(data1))) & " background steps : i "
             & real'image(real(to_integer(signed(i_state))) / 2.0**mproc_radix) & " u "
             & real'image(real(to_integer(signed(u_state))) / 2.0**mproc_radix));
@@ -662,6 +730,7 @@ begin
         g_board_id            => 7
         ,g_clock_frequency_hz => 120_000_000
         ,g_dsp_pre_add_register => pre_add_register
+        ,g_dsp_product_register => product_register
         ,g_ram_output_register  => ram_output_register
         ,g_dsp_request_register => dsp_request_register
         ,g_divider_index_width       => divider_index_width

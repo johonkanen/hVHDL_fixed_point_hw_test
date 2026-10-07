@@ -38,6 +38,7 @@ Register map (source/hw_test_core.vhd) :
     45 1 when the pre-adder is registered (latency 3)             RO
     46 1 when the lookup table rams have their output register     RO
     47 1 when the dsp requests are registered                      RO
+    125 1 when every fixed_dsp registers its product (one clock more) RO
 
     lut calculators through lut_sweep, 16 bit input, 16 bit result
     48.. sine_calculator, angle (fraction of a turn) -> signed sine
@@ -66,6 +67,11 @@ Register map (source/hw_test_core.vhd) :
     133 radix                                                        RO
     134 bit 0 : boost converter model (program 128) in the background RW
     135 clock edges between background runs   136 background runs   RW/RO
+    137 data word width   138 instruction width                     RO
+    384..511 the data ram's bits above 31 (none at 32 bits)          RW
+
+    the same with 36 bit data and instructions at radix 24 :
+    144..154 registers   512..639 data ram bits 31..0   640..767 bits 35..32
     256..383 data ram : write -> the ram, read <- a copy of it       RW
     base +0 input   +1 write -> one request   +2 result               RW/WO/RO
          +3 latency, request at the input to ready, clock edges     RO
@@ -564,7 +570,7 @@ def run_fixed_dsp(uart, rounds, r):
     check_case("mac subtract x8 of 1.5 * 1.25 = -15", fix(1.5), 0, fix(1.25), 0, ACCUMULATE | POST_SUBTRACT, 8)
 
     pre_add_register = uart.read(45)
-    expected_latency = 2 + pre_add_register
+    expected_latency = 2 + pre_add_register + uart.read(125)
     latency = uart.read(41)
     r.check(f"pipeline latency {expected_latency} clock edges"
             f"{' (pre-adder registered)' if pre_add_register else ''}", latency == expected_latency, f"read {latency}")
@@ -632,7 +638,7 @@ def run_lut_calculator(uart, name, base, model, edges, rounds, r):
             ", ".join(f"{x} -> {y} expected {e}" for x, y, e in wrong[:4]))
 
     latency = uart.read(base + 3)
-    expected_latency = 4 + uart.read(45) + uart.read(46) + uart.read(47)
+    expected_latency = 4 + uart.read(45) + uart.read(46) + uart.read(47) + uart.read(125)
     r.check(f"pipeline latency {expected_latency} clock edges", latency == expected_latency, f"read {latency}")
 
     sweeps = [(0, 65536, 0, "all 65536 inputs, back to back"), (0, 65536, 1, "all 65536 inputs, irregular gaps")]
@@ -689,7 +695,7 @@ def run_lut_divider(uart, rounds, r):
     # normalise 2 + reciprocal_calculator 4 + dsp + multiply 1 + dsp +
     # shift 2, both dsps one longer with the pre-adder register
     latency = uart.read(DIVIDER_BASE + 5)
-    expected_latency = 10 + 2 * uart.read(45) + uart.read(46) + 2 * uart.read(47)
+    expected_latency = 10 + 2 * uart.read(45) + uart.read(46) + 2 * uart.read(47) + 2 * uart.read(125)
     r.check(f"pipeline latency {expected_latency} clock edges", latency == expected_latency, f"read {latency}")
 
     sweeps = [(0, 100000, -3000, 6000, "denominators -3000 .. 2999"),
@@ -752,7 +758,7 @@ def run_full_range_sqrt(uart, rounds, r):
     # normalise 2 + sqrt_calculator 4 + dsp + multiply 1 + dsp + shift 2,
     # both dsps one longer with the pre-adder register
     latency = uart.read(ROOT_BASE + 3)
-    expected_latency = 10 + 2 * uart.read(45) + uart.read(46) + 2 * uart.read(47)
+    expected_latency = 10 + 2 * uart.read(45) + uart.read(46) + 2 * uart.read(47) + 2 * uart.read(125)
     r.check(f"pipeline latency {expected_latency} clock edges", latency == expected_latency, f"read {latency}")
 
     sweeps = [(0, 0, 65536, "radicands 0 .. 65535"),
@@ -775,94 +781,119 @@ def run_full_range_sqrt(uart, rounds, r):
     print(f"        full_range_sqrt relative error up to {worst:.2e} for roots above 2**20")
 
 
-MPROC_BASE = 128
-MPROC_RAM = 256
+MPROCS = {"32 bit": dict(base=128, ram=256, ram_high=384),
+          "36 bit": dict(base=144, ram=512, ram_high=640)}
 
 
-def mult_add_model(a, b, c, radix):
-    """bit exact model of fixed_mult_add on fixed_dsp : bits radix + 31
-    downto radix of a * b + c * 2**radix, the operands signed 32 bit ; a
-    sum, difference or -x in fixed_dsp's pre-adder wraps to 32 bits, c is
+def mult_add_model(a, b, c, radix, w=32):
+    """bit exact model of fixed_mult_add on fixed_dsp : bits radix + w - 1
+    downto radix of a * b + c * 2**radix, the operands signed w bit ; a
+    sum, difference or -x in fixed_dsp's pre-adder wraps to w bits, c is
     added or subtracted at the product's width"""
-    return wrap((a * b + (c << radix)) >> radix, 32)
+    return wrap((a * b + (c << radix)) >> radix, w)
 
 
-def mproc_ops_model(m, radix):
+def mproc_ops_model(m, radix, w=32):
     """mproc_test.vhd's program 0 from the data ram words m[64..87], the
     results for addresses 1..8"""
     def ma(a, b, c):
-        return mult_add_model(a, b, c, radix)
+        return mult_add_model(a, b, c, radix, w)
     return [ma(m[64], m[65], m[66]),
             ma(m[67], m[68], -m[69]),
-            ma(wrap(-m[70], 32), m[71], m[72]),
-            ma(wrap(-m[73], 32), m[74], -m[75]),
-            ma(wrap(m[76] + m[77], 32), m[78], 0),
-            ma(wrap(m[79] - m[80], 32), m[81], 0),
-            ma(wrap(m[82] - m[83], 32), m[84], m[83]),
-            wrap(m[85] + m[86] + m[87], 32)]
+            ma(wrap(-m[70], w), m[71], m[72]),
+            ma(wrap(-m[73], w), m[74], -m[75]),
+            ma(wrap(m[76] + m[77], w), m[78], 0),
+            ma(wrap(m[79] - m[80], w), m[81], 0),
+            ma(wrap(m[82] - m[83], w), m[84], m[83]),
+            wrap(m[85] + m[86] + m[87], w)]
 
 
-def mproc_filter_model(y, u, g, radix, rounds=100):
+def mproc_filter_model(y, u, g, radix, w=32, rounds=100):
     """program 32 : rounds of lp_filter y <- (u - y) * g + y"""
     for _ in range(rounds):
-        y = mult_add_model(wrap(u - y, 32), g, y, radix)
+        y = mult_add_model(wrap(u - y, w), g, y, radix, w)
     return y
 
 
 BOOST = dict(vin=100, d=101, load=102, r=103, i_gain=104, u_gain=105, i=106, u=107)
 
 
-def boost_steps(n, i, u, vin, d, load, r, i_gain, u_gain, radix):
+def boost_steps(n, i, u, vin, d, load, r, i_gain, u_gain, radix, w=32):
     """n steps of mproc_test.vhd's boost converter model, program 128"""
     def ma(a, b, c):
-        return mult_add_model(a, b, c, radix)
+        return mult_add_model(a, b, c, radix, w)
     for _ in range(n):
-        vl = ma(wrap(-d, 32), u, vin)
+        vl = ma(wrap(-d, w), u, vin)
         ic = ma(d, i, -load)
-        vl = ma(wrap(-r, 32), i, vl)
+        vl = ma(wrap(-r, w), i, vl)
         u = ma(ic, u_gain, u)
         i = ma(vl, i_gain, i)
     return i, u
 
 
-def write_boost(uart, **values):
-    for name, value in values.items():
-        uart.write(MPROC_RAM + BOOST[name], value & 0xFFFFFFFF)
+class Mproc:
+    """one mproc_test instance : its registers from base, its data ram's
+    bits 31..0 from ram and the bits above from ram_high"""
 
+    def __init__(self, uart, base, ram, ram_high):
+        self.uart, self.base, self.ram, self.ram_high = uart, base, ram, ram_high
+        self.radix = uart.read(base + 5)
+        self.w = uart.read(base + 9)
 
-def read_boost(uart):
-    return wrap(uart.read(MPROC_RAM + BOOST["i"]), 32), wrap(uart.read(MPROC_RAM + BOOST["u"]), 32)
+    def write(self, address, value):
+        if self.w > 32:
+            self.uart.write(self.ram_high + address, (value >> 32) & 0xFFFFFFFF)
+        self.uart.write(self.ram + address, value & 0xFFFFFFFF)
 
+    def read(self, address):
+        value = self.uart.read(self.ram + address)
+        if self.w > 32:
+            value |= self.uart.read(self.ram_high + address) << 32
+        return wrap(value, self.w)
 
-def run_program(uart, start):
-    uart.write(MPROC_BASE + 0, start)
-    uart.write(MPROC_BASE + 1, 1)
-    for _ in range(100):
-        if uart.read(MPROC_BASE + 2) == 0:
-            break
-    return uart.read(MPROC_BASE + 3), uart.read(MPROC_BASE + 4)
+    def run(self, start):
+        self.uart.write(self.base + 0, start)
+        self.uart.write(self.base + 1, 1)
+        for _ in range(100):
+            if self.uart.read(self.base + 2) == 0:
+                break
+        return self.uart.read(self.base + 3), self.uart.read(self.base + 4)
+
+    def write_boost(self, **values):
+        for name, value in values.items():
+            self.write(BOOST[name], value)
+
+    def read_boost(self):
+        return self.read(BOOST["i"]), self.read(BOOST["u"])
 
 
 def run_microprogram_processor(uart, rounds, r):
-    radix = uart.read(MPROC_BASE + 5)
-    print(f"microprogram processor, fixed_mult_add at radix {radix}")
+    for name, addresses in MPROCS.items():
+        run_mproc(Mproc(uart, **addresses), rounds, r)
 
-    values = [r.random.getrandbits(32) for _ in range(128)]
+
+def run_mproc(mp, rounds, r):
+    w, radix = mp.w, mp.radix
+    print(f"microprogram processor, {w} bit data and {mp.uart.read(mp.base + 10)} bit instructions, "
+          f"fixed_mult_add at radix {radix}")
+    mp.uart.write(mp.base + 6, 0)
+
+    values = [wrap(r.random.getrandbits(w), w) for _ in range(128)]
     for k, v in enumerate(values):
-        uart.write(MPROC_RAM + k, v)
-    wrong = sum(uart.read(MPROC_RAM + k) != v for k, v in enumerate(values))
-    r.check("128 random words through the data ram", wrong == 0, f"{wrong} wrong")
+        mp.write(k, v)
+    wrong = sum(mp.read(k) != v for k, v in enumerate(values))
+    r.check(f"128 random {w} bit words through the data ram", wrong == 0, f"{wrong} wrong")
 
-    edges = [0, 1, -1, 1 << radix, -(1 << radix), 0x7FFFFFFF, -0x80000000]
+    edges = [0, 1, -1, 1 << radix, -(1 << radix), (1 << (w - 1)) - 1, -(1 << (w - 1))]
     wrong, runs = [], []
     for n in range(max(20, rounds // 25)):
-        m = {k: r.random.choice(edges) if n % 4 == 0 else wrap(r.random.getrandbits(32), 32)
+        m = {k: r.random.choice(edges) if n % 4 == 0 else wrap(r.random.getrandbits(w), w)
              for k in range(64, 88)}
         for k, v in m.items():
-            uart.write(MPROC_RAM + k, v & 0xFFFFFFFF)
-        runs.append(run_program(uart, 0))
-        got = [wrap(uart.read(MPROC_RAM + k), 32) for k in range(1, 9)]
-        expected = mproc_ops_model(m, radix)
+            mp.write(k, v)
+        runs.append(mp.run(0))
+        got = [mp.read(k) for k in range(1, 9)]
+        expected = mproc_ops_model(m, radix, w)
         wrong += [f"address {k + 1} {g} expected {e}" for k, (g, e) in enumerate(zip(got, expected)) if g != e]
     r.check(f"{len(runs)} runs of the 7 multiply-add commands and the accumulator", not wrong, ", ".join(wrong[:3]))
     r.check("program 0 ready once in 16 clock edges", all(run == (1, 16) for run in runs),
@@ -870,28 +901,30 @@ def run_microprogram_processor(uart, rounds, r):
 
     wrong, runs = [], []
     for _ in range(10):
-        y, u, g = (wrap(r.random.getrandbits(32) >> 6, 32) for _ in range(3))
+        y, u, g = (wrap(r.random.getrandbits(w) >> 6, w) for _ in range(3))
         for k, v in ((96, y), (97, u), (98, g)):
-            uart.write(MPROC_RAM + k, v & 0xFFFFFFFF)
-        runs.append(run_program(uart, 32))
-        got, expected = wrap(uart.read(MPROC_RAM + 96), 32), mproc_filter_model(y, u, g, radix)
+            mp.write(k, v)
+        runs.append(mp.run(32))
+        got, expected = mp.read(96), mproc_filter_model(y, u, g, radix, w)
         if got != expected:
             wrong.append(f"y {y} u {u} g {g} -> {got} expected {expected}")
     r.check("10 runs of a 100 round low pass filter loop", not wrong, ", ".join(wrong[:2]))
     r.check("program 32 ready once in 2007 clock edges", all(run == (1, 2007) for run in runs),
             f"ready pulses, clock edges {sorted(set(runs))}")
 
-    run_boost_converter(uart, radix, r)
+    run_boost_converter(mp, r)
 
 
-def run_boost_converter(uart, radix, r):
+def run_boost_converter(mp, r):
+    uart, base, radix, w = mp.uart, mp.base, mp.radix, mp.w
+
     def fixed(x):
         return int(round(x * 2**radix))
 
     def real(x):
         return x / 2**radix
 
-    uart.write(MPROC_BASE + 6, 0)
+    uart.write(base + 6, 0)
     gains = dict(r=fixed(0.8), i_gain=fixed(0.7 / 3), u_gain=fixed(0.7 / 3))
 
     # single steps from the host, random operating points
@@ -900,11 +933,11 @@ def run_boost_converter(uart, radix, r):
         p = dict(vin=fixed(r.random.uniform(5, 30)), d=fixed(r.random.uniform(0.3, 0.9)),
                  load=fixed(r.random.uniform(0, 2)), **gains)
         i, u = fixed(r.random.uniform(-2, 2)), fixed(r.random.uniform(0, 40))
-        write_boost(uart, i=i, u=u, **p)
+        mp.write_boost(i=i, u=u, **p)
         for _ in range(5):
-            runs.append(run_program(uart, 128))
-            i, u = boost_steps(1, i, u, radix=radix, **p)
-            got = read_boost(uart)
+            runs.append(mp.run(128))
+            i, u = boost_steps(1, i, u, radix=radix, w=w, **p)
+            got = mp.read_boost()
             if got != (i, u):
                 wrong.append(f"{got} expected {(i, u)}")
     r.check(f"{len(runs)} boost converter steps run from the host", not wrong, ", ".join(wrong[:2]))
@@ -914,34 +947,34 @@ def run_boost_converter(uart, radix, r):
     # in the background, replayed for the number of runs it made
     p = dict(vin=fixed(10.0), d=fixed(0.5), load=fixed(0.25), **gains)
     i, u = fixed(1.0), fixed(5.0)
-    write_boost(uart, i=i, u=u, **p)
-    uart.write(MPROC_BASE + 7, 2000)
-    uart.write(MPROC_BASE + 6, 1)
+    mp.write_boost(i=i, u=u, **p)
+    uart.write(base + 7, 2000)
+    uart.write(base + 6, 1)
     time.sleep(0.05)
-    uart.write(MPROC_BASE + 6, 0)
+    uart.write(base + 6, 0)
     for _ in range(100):
-        if uart.read(MPROC_BASE + 2) == 0:
+        if uart.read(base + 2) == 0:
             break
-    n = uart.read(MPROC_BASE + 8)
-    expected = boost_steps(n, i, u, radix=radix, **p)
-    got = read_boost(uart)
+    n = uart.read(base + 8)
+    expected = boost_steps(n, i, u, radix=radix, w=w, **p)
+    got = mp.read_boost()
     r.check(f"{n} background steps", n > 0 and got == expected,
-            f"i {real(got[0]):.4f} A, u {real(got[1]):.4f} V")
+            f"i {real(got[0]):.6f} A, u {real(got[1]):.6f} V")
 
     # change the load while it runs : it settles at i = load / d,
     # u = (vin - r i) / d
-    uart.write(MPROC_BASE + 6, 1)
+    uart.write(base + 6, 1)
     settled = []
     for load in (0.5, 1.5, 0.0):
-        write_boost(uart, load=fixed(load))
+        mp.write_boost(load=fixed(load))
         time.sleep(0.05)
-        i, u = read_boost(uart)
+        i, u = mp.read_boost()
         i_ss = load / 0.5
         u_ss = (10.0 - 0.8 * i_ss) / 0.5
         settled.append(abs(real(i) - i_ss) < 1e-3 and abs(real(u) - u_ss) < 1e-3)
-        print(f"        load {load} A : i {real(i):.4f} A (steady state {i_ss:.4f}), u {real(u):.4f} V ({u_ss:.4f})")
-    runs = uart.read(MPROC_BASE + 8)
-    uart.write(MPROC_BASE + 6, 0)
+        print(f"        load {load} A : i {real(i):.6f} A (steady state {i_ss:.4f}), u {real(u):.6f} V ({u_ss:.4f})")
+    runs = uart.read(base + 8)
+    uart.write(base + 6, 0)
     r.check("settles at the steady state after load steps written while it runs", all(settled), f"{runs} background steps")
 
 

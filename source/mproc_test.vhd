@@ -15,11 +15,21 @@
 --        the background                                           RW
 --   +7 : clock edges from one background run to the next          RW
 --   +8 : background runs since bit 0 of +6 was last set           RO
+--   +9 : data word width (g_word_length)                          RO
+--   +10: instruction width (g_instruction_length)                 RO
 --
--- the data ram, 128 words from g_ram_base_address :
+-- the data ram, 128 words of g_word_length bits, from
+-- g_ram_base_address, bits 31..0 :
 --
 --   +0..+127 : write -> data ram, read <- a copy of the data ram
---              kept from the controller's ram writes              RW
+--              kept from the processor's ram writes               RW
+--
+-- and from g_ram_high_base_address the bits above 31, sign extended,
+-- for a word length over 32 :
+--
+--   +0..+127 : read <- bits word length - 1 downto 32 of the word   RW
+--              write -> the bits above 31 of the next word written
+--              from g_ram_base_address (any address)
 --
 -- the programs are in the program ram, the operands and the results in
 -- the data ram :
@@ -70,8 +80,12 @@ entity mproc_test is
     generic (
         g_base_address      : natural
         ;g_ram_base_address : natural
+        ;g_ram_high_base_address : natural
+        ;g_word_length        : natural := 32 -- 32..64
+        ;g_instruction_length : natural := 32 -- 32 and up, the fields are in bits 31..0
         ;g_radix            : natural := 20
         ;g_pre_add_register : boolean := false -- fixed_dsp's
+        ;g_product_register : boolean := false -- fixed_dsp's
     );
     port (
         clock    : in std_logic
@@ -88,8 +102,8 @@ architecture rtl of mproc_test is
     use work.multi_port_ram_pkg.all;
     use work.execution_unit_pkg.all;
 
-    constant word_length        : natural := 32;
-    constant instruction_length : natural := 32;
+    constant word_length        : natural := g_word_length;
+    constant instruction_length : natural := g_instruction_length;
     constant ram_size           : natural := 128;
 
     constant ref_subtype : subtype_ref_record :=
@@ -126,8 +140,9 @@ architecture rtl of mproc_test is
         ,u       => to_fixed(12.0)
         ,others  => (others => '0'));
 
-    -- results depend on operands written at least 16 instructions before
-    constant test_program : work.dual_port_ram_pkg.ram_array(0 to instr_ref_subtype.address_high)(instr_ref_subtype.data'range) := (
+    -- results depend on operands written at least 16 instructions before ;
+    -- 32 bit instructions, widened to the instruction length below
+    constant program_32 : work.dual_port_ram_pkg.ram_array(0 to instr_ref_subtype.address_high)(31 downto 0) := (
         0   => op(mpy_add          , 1 , 64 , 65 , 66)
         , 1 => op(mpy_sub          , 2 , 67 , 68 , 69)
         , 2 => op(neg_mpy_add      , 3 , 70 , 71 , 72)
@@ -154,6 +169,18 @@ architecture rtl of mproc_test is
 
         , others => op(nop));
 
+    function widen (program : work.dual_port_ram_pkg.ram_array) return work.dual_port_ram_pkg.ram_array is
+        variable retval : work.dual_port_ram_pkg.ram_array(program'range)(instr_ref_subtype.data'range);
+    begin
+        for k in program'range loop
+            retval(k) := resize_instruction(program(k), instruction_length);
+        end loop;
+        return retval;
+    end widen;
+
+    constant test_program : work.dual_port_ram_pkg.ram_array(0 to instr_ref_subtype.address_high)(instr_ref_subtype.data'range)
+        := widen(program_32);
+
     signal mproc_in  : microprogram_processor_in_record;
     signal mproc_out : microprogram_processor_out_record;
 
@@ -163,7 +190,7 @@ architecture rtl of mproc_test is
     constant unit_in_ref : execution_unit_in_record := (
         instr_ram_read_out => instr_ref_subtype.ram_read_out
         ,data_read_out     => ref_subtype.ram_read_out
-        ,instr_pipeline    => (0 to 12 => op(nop))
+        ,instr_pipeline    => (0 to 12 => resize_instruction(op(nop), instruction_length))
     );
     constant unit_out_ref : execution_unit_out_record := (
         data_read_in  => ref_subtype.ram_read_in
@@ -187,6 +214,26 @@ architecture rtl of mproc_test is
     signal shadow_ram   : shadow_array := initial_shadow;
     signal shadow_q     : std_logic_vector(word_length-1 downto 0) := (others => '0');
     signal read_pending : boolean := false;
+    signal read_high    : boolean := false;
+    signal high_bits    : std_logic_vector(31 downto 0) := (others => '0');
+
+    -- a word from the bus' low word and the held high bits
+    function to_word (low, high : std_logic_vector(31 downto 0)) return std_logic_vector is
+        variable retval : std_logic_vector(63 downto 0);
+    begin
+        retval := high & low;
+        return retval(word_length-1 downto 0);
+    end to_word;
+
+    -- bits 31..0 or the bits above, sign extended, of a word
+    function word_part (word : std_logic_vector; high : boolean) return std_logic_vector is
+        constant extended : signed(63 downto 0) := resize(signed(word), 64);
+    begin
+        if high then
+            return std_logic_vector(extended(63 downto 32));
+        end if;
+        return std_logic_vector(extended(31 downto 0));
+    end word_part;
 
     signal start_address : std_logic_vector(31 downto 0) := (others => '0');
     signal running       : boolean := false;
@@ -216,6 +263,8 @@ begin
             connect_data_to_address(bus_in, bus_out, g_base_address + 6, background);
             connect_data_to_address(bus_in, bus_out, g_base_address + 7, background_period);
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 8, std_logic_vector(background_runs));
+            connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 9, std_logic_vector(to_unsigned(word_length, 32)));
+            connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 10, std_logic_vector(to_unsigned(instruction_length, 32)));
 
             if write_is_requested_to_address(bus_in, g_base_address + 1) then
                 calculate(mproc_in, to_integer(unsigned(start_address(9 downto 0))));
@@ -263,16 +312,21 @@ begin
             -- the data ram : writes go to the controller, reads come from
             -- the copy one clock later
             if write_is_requested_to_address_range(bus_in, g_ram_base_address, g_ram_base_address + ram_size) then
-                write_data_to_ram(mc_write_in, get_address(bus_in) - g_ram_base_address, get_slv_data(bus_in));
+                write_data_to_ram(mc_write_in, get_address(bus_in) - g_ram_base_address, to_word(get_slv_data(bus_in), high_bits));
+            end if;
+            if write_is_requested_to_address_range(bus_in, g_ram_high_base_address, g_ram_high_base_address + ram_size) then
+                high_bits <= get_slv_data(bus_in);
             end if;
 
             if mc_output.write_requested = '1' then
                 shadow_ram(to_integer(mc_output.address) mod ram_size) <= mc_output.data;
             end if;
             shadow_q     <= shadow_ram(get_address(bus_in) mod ram_size);
-            read_pending <= data_is_requested_from_address_range(bus_in, g_ram_base_address, g_ram_base_address + ram_size);
+            read_pending <= data_is_requested_from_address_range(bus_in, g_ram_base_address, g_ram_base_address + ram_size)
+                or data_is_requested_from_address_range(bus_in, g_ram_high_base_address, g_ram_high_base_address + ram_size);
+            read_high <= data_is_requested_from_address_range(bus_in, g_ram_high_base_address, g_ram_high_base_address + ram_size);
             if read_pending then
-                write_data_to_address(bus_out, 0, shadow_q);
+                write_data_to_address(bus_out, 0, word_part(shadow_q, read_high));
             end if;
 
             if reset = '1' then
@@ -296,7 +350,7 @@ begin
     );
 
     u_fixed_mult_add : entity work.execution_unit(fixed_mult_add)
-    generic map (g_radix => g_radix, g_pre_add_register => g_pre_add_register)
+    generic map (g_radix => g_radix, g_pre_add_register => g_pre_add_register, g_product_register => g_product_register)
     port map (
         clock            => clock
         ,unit_in         => unit_in
