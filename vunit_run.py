@@ -49,15 +49,15 @@ lib.add_source_files(FIXED / "full_range_sqrt/full_range_sqrt.vhd")
 
 # hVHDL_microprogam_processor, with the fixed point and memory library
 # above instead of its own submodules
-MPROC = SOURCE / "hVHDL_microprogam_processor/vhdl2008"
+MPROC = SOURCE / "hVHDL_microprogam_processor/rtl"
 lib.add_source_files(MEMORY / "mpram_w_configurable_records.vhd")
-lib.add_source_files(MPROC / "vhdl2008_microinstruction_pkg.vhd")
-lib.add_source_files(MPROC / "def_microinstruction_pkg.vhd")
-lib.add_source_files(MPROC / "microprogram_processor_pkg.vhd")
-lib.add_source_files(MPROC / "instruction_pkg.vhd")
+lib.add_source_files(MPROC / "generic_microinstruction_pkg.vhd")
+lib.add_source_files(MPROC / "microinstruction_pkg.vhd")
+lib.add_source_files(MPROC / "microprogram_interface_pkg.vhd")
+lib.add_source_files(MPROC / "execution_unit.vhd")
 lib.add_source_files(MPROC / "arch_fixed_mult_add.vhd")
 lib.add_source_files(MPROC / "microprogram_sequencer.vhd")
-lib.add_source_files(MPROC / "microprogram_controller.vhd")
+lib.add_source_files(MPROC / "microprogram_core.vhd")
 
 lib.add_source_files(SOURCE / "git_hash_pkg.vhd")
 lib.add_source_files(SOURCE / "mproc_test.vhd")

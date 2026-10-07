@@ -15,7 +15,7 @@ variable root_dir       [file dirname $this_file_path]
 variable source_dir     $root_dir/source
 variable com_dir        $source_dir/fpga_communication
 variable fixed_dir      $source_dir/hVHDL_fixed_point
-variable mproc_dir      $source_dir/hVHDL_microprogam_processor/vhdl2008
+variable mproc_dir      $source_dir/hVHDL_microprogam_processor/rtl
 
 set need_to_close_project 0
 if {[is_project_open]} {
@@ -64,13 +64,13 @@ set_global_assignment -name VHDL_FILE $fixed_dir/fixed_point_scaling/fixed_point
 set_global_assignment -name VHDL_FILE $fixed_dir/lut_divider/lut_divider.vhd
 set_global_assignment -name VHDL_FILE $fixed_dir/full_range_sqrt/full_range_sqrt.vhd
 set_global_assignment -name VHDL_FILE $fixed_dir/submodules/hVHDL_memory_library/vhdl2008/mpram_w_configurable_records.vhd
-set_global_assignment -name VHDL_FILE $mproc_dir/vhdl2008_microinstruction_pkg.vhd
-set_global_assignment -name VHDL_FILE $mproc_dir/def_microinstruction_pkg.vhd
-set_global_assignment -name VHDL_FILE $mproc_dir/microprogram_processor_pkg.vhd
-set_global_assignment -name VHDL_FILE $mproc_dir/instruction_pkg.vhd
+set_global_assignment -name VHDL_FILE $mproc_dir/generic_microinstruction_pkg.vhd
+set_global_assignment -name VHDL_FILE $mproc_dir/microinstruction_pkg.vhd
+set_global_assignment -name VHDL_FILE $mproc_dir/microprogram_interface_pkg.vhd
+set_global_assignment -name VHDL_FILE $mproc_dir/execution_unit.vhd
 set_global_assignment -name VHDL_FILE $mproc_dir/arch_fixed_mult_add.vhd
 set_global_assignment -name VHDL_FILE $mproc_dir/microprogram_sequencer.vhd
-set_global_assignment -name VHDL_FILE $mproc_dir/microprogram_controller.vhd
+set_global_assignment -name VHDL_FILE $mproc_dir/microprogram_core.vhd
 set_global_assignment -name VHDL_FILE $source_dir/git_hash_pkg.vhd
 set_global_assignment -name VHDL_FILE $source_dir/lut_sweep.vhd
 set_global_assignment -name VHDL_FILE $source_dir/divider_sweep.vhd

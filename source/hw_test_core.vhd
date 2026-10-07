@@ -64,8 +64,8 @@
 --   112..124 : see sqrt_sweep.vhd, the sqrt table from the g_root_*
 --              generics
 --
--- hVHDL_microprogam_processor's microprogram_controller with
--- instruction(fixed_mult_add) on a fixed_dsp with the same pre-add option,
+-- hVHDL_microprogam_processor's microprogram_core with
+-- execution_unit(fixed_mult_add) on a fixed_dsp with the same pre-add option,
 -- 32 bit data at radix 20 :
 --
 --   128..133 : see mproc_test.vhd

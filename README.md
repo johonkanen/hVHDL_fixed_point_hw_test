@@ -214,7 +214,7 @@ edge cases, a 1000-request accumulate burst, the accumulator reset, and random
 operands with every flag combination and bursts of up to 300.
 
 The microprogram processor: `hVHDL_microprogam_processor`'s
-`microprogram_controller` with `instruction(fixed_mult_add)` on a `fixed_dsp`
+`microprogram_core` with `execution_unit(fixed_mult_add)` on a `fixed_dsp`
 (with the core's pre-adder register option), 32-bit data at radix 20, through `source/mproc_test.vhd`, registers from 128. The programs
 are in the program RAM, the operands and results in the 128-word data RAM:
 
@@ -269,10 +269,10 @@ the program.
 
   | board | clock | RAM output register | DSP request registers | calculators | divider / √ | setup slack |
   |---|---|---|---|---|---|---|
-  | Ti60 EVM | 120 MHz | off | off | 4 | 10 | +3.23 ns |
-  | Alchitry Au+ (pre-adder registered) | 120 MHz | off | off | 5 | 12 | +0.29 ns |
-  | AXC3000 | 120 MHz | on | off | 5 | 11 | +1.02 ns |
-  | Trion T120 (pre-adder registered) | 60 MHz | on | on | 7 | 15 | +6.14 ns (Fmax 95.0 MHz) |
+  | Ti60 EVM | 120 MHz | off | off | 4 | 10 | +3.21 ns |
+  | Alchitry Au+ (pre-adder registered) | 120 MHz | off | off | 5 | 12 | +0.38 ns |
+  | AXC3000 | 120 MHz | on | off | 5 | 11 | +1.12 ns |
+  | Trion T120 (pre-adder registered) | 60 MHz | on | on | 7 | 15 | +5.96 ns (Fmax 93.4 MHz) |
 
   On the AXC3000 the M20K read register straight into a DSP misses 120 MHz
   by 0.41 ns, so it keeps the RAM output register. The Trion starts with

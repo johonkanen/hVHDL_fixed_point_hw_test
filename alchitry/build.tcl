@@ -14,7 +14,7 @@ set ROOT_DIR   [file dirname $BOARD_DIR]
 set SOURCE_DIR "$ROOT_DIR/source"
 set COM_DIR    "$SOURCE_DIR/fpga_communication"
 set FIXED_DIR  "$SOURCE_DIR/hVHDL_fixed_point"
-set MPROC_DIR  "$SOURCE_DIR/hVHDL_microprogam_processor/vhdl2008"
+set MPROC_DIR  "$SOURCE_DIR/hVHDL_microprogam_processor/rtl"
 set OUTPUT_DIR "$BOARD_DIR/output"
 
 file mkdir $OUTPUT_DIR
@@ -40,13 +40,13 @@ set VHDL_SOURCES [list \
     "$FIXED_DIR/lut_divider/lut_divider.vhd" \
     "$FIXED_DIR/full_range_sqrt/full_range_sqrt.vhd" \
     "$FIXED_DIR/submodules/hVHDL_memory_library/vhdl2008/mpram_w_configurable_records.vhd" \
-    "$MPROC_DIR/vhdl2008_microinstruction_pkg.vhd" \
-    "$MPROC_DIR/def_microinstruction_pkg.vhd" \
-    "$MPROC_DIR/microprogram_processor_pkg.vhd" \
-    "$MPROC_DIR/instruction_pkg.vhd" \
+    "$MPROC_DIR/generic_microinstruction_pkg.vhd" \
+    "$MPROC_DIR/microinstruction_pkg.vhd" \
+    "$MPROC_DIR/microprogram_interface_pkg.vhd" \
+    "$MPROC_DIR/execution_unit.vhd" \
     "$MPROC_DIR/arch_fixed_mult_add.vhd" \
     "$MPROC_DIR/microprogram_sequencer.vhd" \
-    "$MPROC_DIR/microprogram_controller.vhd" \
+    "$MPROC_DIR/microprogram_core.vhd" \
     "$SOURCE_DIR/git_hash_pkg.vhd" \
     "$SOURCE_DIR/lut_sweep.vhd" \
     "$SOURCE_DIR/divider_sweep.vhd" \

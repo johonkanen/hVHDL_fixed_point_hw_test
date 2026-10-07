@@ -60,7 +60,7 @@ Register map (source/hw_test_core.vhd) :
     118 s1   119 s2   120 ready pulses                              RO
     121 table index width  122 table word length  123 table radix  124 x_frac width  RO
 
-    microprogram_controller with instruction(fixed_mult_add), 32 bit data
+    microprogram_core with execution_unit(fixed_mult_add), 32 bit data
     128 program start address   129 write -> run the program        RW/WO
     130 busy   131 ready pulses   132 clock edges from run to ready    RO
     133 radix                                                        RO

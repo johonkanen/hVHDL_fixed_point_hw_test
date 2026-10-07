@@ -1,7 +1,7 @@
 ------------------------------------------------------------------------
 -- mproc_test - uart register test for hVHDL_microprogam_processor's
--- microprogram_controller with the fixed point instruction
--- (instruction(fixed_mult_add)), 32 bit data at radix g_radix
+-- microprogram_core with the fixed point execution unit
+-- (execution_unit(fixed_mult_add)), 32 bit data at radix g_radix
 --
 -- registers from g_base_address :
 --
@@ -63,10 +63,10 @@ end entity mproc_test;
 
 architecture rtl of mproc_test is
 
-    use work.microprogram_processor_pkg.all;
+    use work.microprogram_interface_pkg.all;
     use work.microinstruction_pkg.all;
     use work.multi_port_ram_pkg.all;
-    use work.instruction_pkg.all;
+    use work.execution_unit_pkg.all;
 
     constant word_length        : natural := 32;
     constant instruction_length : natural := 32;
@@ -107,18 +107,18 @@ architecture rtl of mproc_test is
     signal mc_output   : ref_subtype.ram_write_in'subtype;
     signal mc_write_in : ref_subtype.ram_write_in'subtype := ref_subtype.ram_write_in;
 
-    constant instruction_in_ref : instruction_in_record := (
+    constant unit_in_ref : execution_unit_in_record := (
         instr_ram_read_out => instr_ref_subtype.ram_read_out
         ,data_read_out     => ref_subtype.ram_read_out
         ,instr_pipeline    => (0 to 12 => op(nop))
     );
-    constant instruction_out_ref : instruction_out_record := (
+    constant unit_out_ref : execution_unit_out_record := (
         data_read_in  => ref_subtype.ram_read_in
         ,ram_write_in => ref_subtype.ram_write_in
     );
 
-    signal instr_in  : instruction_in_ref'subtype  := instruction_in_ref;
-    signal instr_out : instruction_out_ref'subtype := instruction_out_ref;
+    signal unit_in  : unit_in_ref'subtype  := unit_in_ref;
+    signal unit_out : unit_out_ref'subtype := unit_out_ref;
 
     type shadow_array is array (0 to ram_size-1) of std_logic_vector(word_length-1 downto 0);
     signal shadow_ram   : shadow_array := (others => (others => '0'));
@@ -181,7 +181,7 @@ begin
         end if;
     end process registers;
 
-    u_microprogram_controller : entity work.microprogram_controller
+    u_microprogram_core : entity work.microprogram_core
     generic map (g_program => test_program, g_data => program_data, g_data_bit_width => word_length)
     port map (
         clock            => clock
@@ -189,16 +189,16 @@ begin
         ,mproc_out       => mproc_out
         ,mc_output       => mc_output
         ,mc_write_in     => mc_write_in
-        ,instruction_in  => instr_in
-        ,instruction_out => instr_out
+        ,to_unit         => unit_in
+        ,from_unit       => unit_out
     );
 
-    u_fixed_mult_add : entity work.instruction(fixed_mult_add)
-    generic map (radix => g_radix, g_pre_add_register => g_pre_add_register)
+    u_fixed_mult_add : entity work.execution_unit(fixed_mult_add)
+    generic map (g_radix => g_radix, g_pre_add_register => g_pre_add_register)
     port map (
         clock            => clock
-        ,instruction_in  => instr_in
-        ,instruction_out => instr_out
+        ,unit_in         => unit_in
+        ,unit_out        => unit_out
     );
 
 end architecture rtl;
