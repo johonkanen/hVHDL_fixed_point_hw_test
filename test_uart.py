@@ -68,11 +68,13 @@ Register map (source/hw_test_core.vhd) :
     134 bit 0 : boost converter model (program 128) in the background RW
     135 clock edges between background runs   136 background runs   RW/RO
     137 data word width   138 instruction width   139 data ram words  RO
+    140 result latency L : the programs are scheduled for it, run times
+        0 : 15 + L, 32 : 100 L + 7, 128 : 3 L + 6, 192 : L + 7     RO
     384..511 the data ram's bits above 31 (none at 32 bits)          RW
 
     the same with 36 bit data and instructions (8 bit address fields,
     a 256 word data ram) at radix 24 :
-    144..155 registers   512..767 data ram bits 31..0   768..1023 bits 35..32
+    144..156 registers   512..767 data ram bits 31..0   768..1023 bits 35..32
     256..383 data ram : write -> the ram, read <- a copy of it       RW
     base +0 input   +1 write -> one request   +2 result               RW/WO/RO
          +3 latency, request at the input to ready, clock edges     RO
@@ -841,6 +843,9 @@ class Mproc:
         self.radix = uart.read(base + 5)
         self.w = uart.read(base + 9)
         self.ram_size = uart.read(base + 11)
+        # the result latency : the run times follow it, the programs are
+        # laid out for it by the processor's schedule() and repeat()
+        self.latency = uart.read(base + 12)
 
     def write(self, address, value):
         if self.w > 32:
@@ -876,8 +881,9 @@ def run_microprogram_processor(uart, rounds, r):
 
 def run_mproc(mp, rounds, r):
     w, radix = mp.w, mp.radix
+    latency = mp.latency
     print(f"microprogram processor, {w} bit data and {mp.uart.read(mp.base + 10)} bit instructions, "
-          f"fixed_mult_add at radix {radix}")
+          f"fixed_mult_add at radix {radix}, result latency {latency}")
     mp.uart.write(mp.base + 6, 0)
 
     values = [wrap(r.random.getrandbits(w), w) for _ in range(mp.ram_size)]
@@ -898,7 +904,7 @@ def run_mproc(mp, rounds, r):
         expected = mproc_ops_model(m, radix, w)
         wrong += [f"address {k + 1} {g} expected {e}" for k, (g, e) in enumerate(zip(got, expected)) if g != e]
     r.check(f"{len(runs)} runs of the 7 multiply-add commands and the accumulator", not wrong, ", ".join(wrong[:3]))
-    r.check("program 0 ready once in 16 clock edges", all(run == (1, 16) for run in runs),
+    r.check(f"program 0 ready once in {15 + latency} clock edges", all(run == (1, 15 + latency) for run in runs),
             f"ready pulses, clock edges {sorted(set(runs))}")
 
     wrong, runs = [], []
@@ -911,22 +917,24 @@ def run_mproc(mp, rounds, r):
         if got != expected:
             wrong.append(f"y {y} u {u} g {g} -> {got} expected {expected}")
     r.check("10 runs of a 100 round low pass filter loop", not wrong, ", ".join(wrong[:2]))
-    r.check("program 32 ready once in 2007 clock edges", all(run == (1, 2007) for run in runs),
+    r.check(f"program 32 ready once in {100 * latency + 7} clock edges", all(run == (1, 100 * latency + 7) for run in runs),
             f"ready pulses, clock edges {sorted(set(runs))}")
 
     if mp.ram_size > 128:
-        wrong = []
+        wrong, runs = [], []
         for _ in range(10):
             m = {k: wrap(r.random.getrandbits(w), w) for k in range(200, 206)}
             for k, v in m.items():
                 mp.write(k, v)
-            mp.run(192)
+            runs.append(mp.run(192))
             expected = [mult_add_model(m[200], m[201], m[202], radix, w),
                         mult_add_model(m[203], m[204], -m[205], radix, w)]
             got = [mp.read(250), mp.read(251)]
             if got != expected:
                 wrong.append(f"{got} expected {expected}")
         r.check(f"10 runs of program 192, operands and results above 127", not wrong, ", ".join(wrong[:2]))
+        r.check(f"program 192 ready once in {latency + 7} clock edges", all(run == (1, latency + 7) for run in runs),
+                f"ready pulses, clock edges {sorted(set(runs))}")
 
     run_boost_converter(mp, r)
 
@@ -957,7 +965,7 @@ def run_boost_converter(mp, r):
             if got != (i, u):
                 wrong.append(f"{got} expected {(i, u)}")
     r.check(f"{len(runs)} boost converter steps run from the host", not wrong, ", ".join(wrong[:2]))
-    r.check("program 128 ready once in 36 clock edges", all(run == (1, 36) for run in runs),
+    r.check(f"program 128 ready once in {3 * mp.latency + 6} clock edges", all(run == (1, 3 * mp.latency + 6) for run in runs),
             f"ready pulses, clock edges {sorted(set(runs))}")
 
     # in the background, replayed for the number of runs it made

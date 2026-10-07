@@ -356,6 +356,8 @@ begin
         constant mproc_base     : natural := 128;
         constant mproc_ram_base : natural := 256;
         constant mproc_radix    : natural := 20;
+        -- both processors' result latency, the run times follow it
+        constant mproc_latency  : natural := work.execution_unit_pkg.fixed_point_result_latency(pre_add_register, product_register);
 
         function mult_add (a, b, c : std_logic_vector(31 downto 0)) return std_logic_vector is
             variable result : signed(63 downto 0);
@@ -570,6 +572,7 @@ begin
 
         -- microprogram processor, program 0 : one of each command
         check_register(mproc_base + 5, mproc_radix);
+        check_register(mproc_base + 12, mproc_latency);
         write_register(mproc_ram_base + 1, x"5a5a5a5a"); -- program 0 overwrites it
         check_register(mproc_ram_base + 1, x"5a5a5a5a");
         x := x"1234abcd";
@@ -579,7 +582,7 @@ begin
             write_register(mproc_ram_base + i, operands(i));
         end loop;
         check_register(mproc_ram_base + 70, operands(70));
-        run_program(0, clocks => 16);
+        run_program(0, clocks => 15 + mproc_latency);
         check_register(mproc_ram_base + 1, mult_add(operands(64), operands(65), operands(66)));
         check_register(mproc_ram_base + 2, mult_sub(operands(67), operands(68), operands(69)));
         check_register(mproc_ram_base + 3, mult_add(minus(operands(70)), operands(71), operands(72)));
@@ -598,7 +601,7 @@ begin
             y := mult_add(sum(std_logic_vector(to_signed(3 * 2**mproc_radix, 32)), minus(y))
                 , std_logic_vector(to_signed(2**mproc_radix / 20, 32)), y);
         end loop;
-        run_program(32, clocks => 2007);
+        run_program(32, clocks => 100 * mproc_latency + 7);
         check_register(mproc_ram_base + 96, y);
 
         -- program 128 : one boost converter step from its initial data
@@ -607,7 +610,7 @@ begin
         i_state := to_fixed(0.0);
         u_state := to_fixed(12.0);
         boost_steps(1, i_state, u_state, to_fixed(20.0), to_fixed(0.8), to_fixed(0.0), to_fixed(0.8), to_fixed(0.7 / 3.0), to_fixed(0.7 / 3.0));
-        run_program(128, clocks => 36);
+        run_program(128, clocks => 3 * mproc_latency + 6);
         check_register(mproc_ram_base + 106, i_state);
         check_register(mproc_ram_base + 107, u_state);
 
@@ -658,7 +661,7 @@ begin
             exit when data1 = x"00000000";
         end loop;
         check_register(mproc36_base + 3, 1);
-        check_register(mproc36_base + 4, 16);
+        check_register(mproc36_base + 4, 15 + mproc_latency);
         check_word36(1, mult_add36(operands36(64), operands36(65), operands36(66)));
         check_word36(2, mult_add36(operands36(67), operands36(68), operands36(69), subtract => true));
         check_word36(3, mult_add36(-operands36(70), operands36(71), operands36(72)));

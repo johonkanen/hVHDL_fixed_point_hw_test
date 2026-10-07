@@ -19,6 +19,8 @@
 --   +10: instruction width (g_instruction_length)                 RO
 --   +11: data ram words, as far as the instructions' address fields
 --        reach : 128 for 32 bit instructions, 256 for 36           RO
+--   +12: result latency L : an instruction reads the result of one
+--        at least L instructions before it                        RO
 --
 -- the data ram, of g_word_length bits, from g_ram_base_address, bits
 -- 31..0 :
@@ -34,9 +36,13 @@
 --            from g_ram_base_address (any address)
 --
 -- the programs are in the program ram, the operands and the results in
--- the data ram :
+-- the data ram. Each is written as its instructions in order and laid out
+-- for this instance by microprogram_assembler_pkg's schedule() and
+-- repeat() with the execution unit's result latency L, so ready marks the
+-- results as in the data ram. Run times, from the run request to ready :
 --
---   0  : one of each fixed_mult_add command, operands from 64..87
+--   0  : one of each fixed_mult_add command, operands from 64..87,
+--        15 + L clocks
 --        mpy_add       1 <- 64 * 65 + 66
 --        mpy_sub       2 <- 67 * 68 - 69
 --        neg_mpy_add   3 <- -70 * 71 + 72
@@ -45,12 +51,12 @@
 --        a_sub_b_mpy_c 6 <- (79 - 80) * 81
 --        lp_filter     7 <- (82 - 83) * 84 + 83
 --        acc 85, acc 86, get_acc_and_zero 8 <- 85 + 86 + 87
---   32 : set_rpt 99, then lp_filter 96 <- (97 - 96) * 98 + 96 in a
---        loop closed by jump, 100 times
+--   32 : lp_filter 96 <- (97 - 96) * 98 + 96, repeated 100 times,
+--        100 * L + 7 clocks
 --   192: with 8 bit address fields or more, operands and results
 --        above 127 : mpy_add 250 <- 200 * 201 + 202,
---        mpy_sub 251 <- 203 * 204 - 205
---   128: one time step of an averaged boost converter (the
+--        mpy_sub 251 <- 203 * 204 - 205, L + 7 clocks
+--   128: one time step of an averaged boost converter, 3 * L + 6 clocks (the
 --        ac_in_ac_out_lab_power_supply test_processor v3 model), the
 --        inductor current i and capacitor voltage u from the input
 --        voltage, the duty d (as the switch's 1 - D) and the load
@@ -106,6 +112,7 @@ architecture rtl of mproc_test is
     use work.microinstruction_pkg.all;
     use work.multi_port_ram_pkg.all;
     use work.execution_unit_pkg.all;
+    use work.microprogram_assembler_pkg.all;
 
     constant word_length        : natural := g_word_length;
     constant instruction_length : natural := g_instruction_length;
@@ -146,40 +153,46 @@ architecture rtl of mproc_test is
         ,u       => to_fixed(12.0)
         ,others  => (others => '0'));
 
-    -- results depend on operands written at least 16 instructions before
+    -- the programs, laid out for this instance's configuration
+    constant config : processor_config := (
+        instruction_width => instruction_length
+        ,data_width       => word_length
+        ,radix            => g_radix
+        ,result_latency   => fixed_point_result_latency(g_pre_add_register, g_product_register));
+
+    constant one_of_each : microprogram := (
+         mi(mpy_add          , 1 , 64 , 65 , 66)
+        ,mi(mpy_sub          , 2 , 67 , 68 , 69)
+        ,mi(neg_mpy_add      , 3 , 70 , 71 , 72)
+        ,mi(neg_mpy_sub      , 4 , 73 , 74 , 75)
+        ,mi(a_add_b_mpy_c    , 5 , 76 , 77 , 78)
+        ,mi(a_sub_b_mpy_c    , 6 , 79 , 80 , 81)
+        ,mi(lp_filter        , 7 , 82 , 83 , 84)
+        ,mi(acc              , 0 , 0  , 0  , 85)
+        ,mi(acc              , 0 , 0  , 0  , 86)
+        ,mi(get_acc_and_zero , 8 , 0  , 0  , 87));
+
+    constant low_pass_filter : microprogram := (0 => mi(lp_filter, 96, 97, 96, 98));
+
+    constant boost_converter_step : microprogram := (
+         mi(neg_mpy_add , vl , duty , u      , vin)
+        ,mi(mpy_sub     , ic , duty , i      , load)
+        ,mi(neg_mpy_add , vl , r    , i      , vl)
+        ,mi(mpy_add     , u  , ic   , u_gain , u)
+        ,mi(mpy_add     , i  , vl   , i_gain , i));
+
+    constant high_addresses : microprogram := (
+         mi(mpy_add , 250 , 200 , 201 , 202)
+        ,mi(mpy_sub , 251 , 203 , 204 , 205));
+
     function make_program return microprogram is
-        variable retval : microprogram(0 to instr_ref_subtype.address_high) := (others => mi(nop));
+        variable retval : microprogram(0 to instr_ref_subtype.address_high) := empty_program(instr_ref_subtype.address_high + 1);
     begin
-        retval := (
-        0   => mi(mpy_add          , 1 , 64 , 65 , 66)
-        , 1 => mi(mpy_sub          , 2 , 67 , 68 , 69)
-        , 2 => mi(neg_mpy_add      , 3 , 70 , 71 , 72)
-        , 3 => mi(neg_mpy_sub      , 4 , 73 , 74 , 75)
-        , 4 => mi(a_add_b_mpy_c    , 5 , 76 , 77 , 78)
-        , 5 => mi(a_sub_b_mpy_c    , 6 , 79 , 80 , 81)
-        , 6 => mi(lp_filter        , 7 , 82 , 83 , 84)
-        , 7 => mi(acc              , 0 , 0  , 0  , 85)
-        , 8 => mi(acc              , 0 , 0  , 0  , 86)
-        , 9 => mi(get_acc_and_zero , 8 , 0  , 0  , 87)
-        , 10 => mi(program_end)
-
-        , 32 => mi(set_rpt   , 99)
-        , 33 => mi(lp_filter , 96 , 97 , 96 , 98)
-        , 49 => mi(jump      , 33)
-        , 53 => mi(program_end)
-
-        , boost_converter      => mi(neg_mpy_add , vl , duty   , u      , vin)
-        , boost_converter + 1  => mi(mpy_sub     , ic , duty   , i      , load)
-        , boost_converter + 13 => mi(neg_mpy_add , vl , r      , i      , vl)
-        , boost_converter + 14 => mi(mpy_add     , u  , ic     , u_gain , u)
-        , boost_converter + 28 => mi(mpy_add     , i  , vl     , i_gain , i)
-        , boost_converter + 30 => mi(program_end)
-
-        , others => mi(nop));
+        retval := place(retval, 0,   schedule(config, one_of_each) & mi(program_end));
+        retval := place(retval, 32,  repeat(config, 100, low_pass_filter) & mi(program_end));
+        retval := place(retval, boost_converter, schedule(config, boost_converter_step) & mi(program_end));
         if address_bits(instruction_length) >= 8 then
-            retval(192) := mi(mpy_add , 250 , 200 , 201 , 202);
-            retval(193) := mi(mpy_sub , 251 , 203 , 204 , 205);
-            retval(196) := mi(program_end);
+            retval := place(retval, 192, schedule(config, high_addresses) & mi(program_end));
         end if;
         return retval;
     end make_program;
@@ -272,6 +285,7 @@ begin
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 9, std_logic_vector(to_unsigned(word_length, 32)));
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 10, std_logic_vector(to_unsigned(instruction_length, 32)));
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 11, std_logic_vector(to_unsigned(ram_size, 32)));
+            connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 12, std_logic_vector(to_unsigned(config.result_latency, 32)));
 
             if write_is_requested_to_address(bus_in, g_base_address + 1) then
                 calculate(mproc_in, to_integer(unsigned(start_address(9 downto 0))));

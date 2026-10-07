@@ -28,6 +28,7 @@
         <efx:design_file name="../source/hVHDL_fixed_point/submodules/hVHDL_memory_library/vhdl2008/mpram_w_configurable_records.vhd" version="default" library="default" />
         <efx:design_file name="../source/hVHDL_microprogam_processor/rtl/generic_microinstruction_pkg.vhd" version="default" library="default" />
         <efx:design_file name="../source/hVHDL_microprogam_processor/rtl/microinstruction_pkg.vhd" version="default" library="default" />
+        <efx:design_file name="../source/hVHDL_microprogam_processor/rtl/microprogram_assembler_pkg.vhd" version="default" library="default" />
         <efx:design_file name="../source/hVHDL_microprogam_processor/rtl/microprogram_interface_pkg.vhd" version="default" library="default" />
         <efx:design_file name="../source/hVHDL_microprogam_processor/rtl/execution_unit.vhd" version="default" library="default" />
         <efx:design_file name="../source/hVHDL_microprogam_processor/rtl/arch_fixed_mult_add.vhd" version="default" library="default" />

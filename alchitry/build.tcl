@@ -42,6 +42,7 @@ set VHDL_SOURCES [list \
     "$FIXED_DIR/submodules/hVHDL_memory_library/vhdl2008/mpram_w_configurable_records.vhd" \
     "$MPROC_DIR/generic_microinstruction_pkg.vhd" \
     "$MPROC_DIR/microinstruction_pkg.vhd" \
+    "$MPROC_DIR/microprogram_assembler_pkg.vhd" \
     "$MPROC_DIR/microprogram_interface_pkg.vhd" \
     "$MPROC_DIR/execution_unit.vhd" \
     "$MPROC_DIR/arch_fixed_mult_add.vhd" \
