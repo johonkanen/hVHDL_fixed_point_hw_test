@@ -43,6 +43,7 @@ set VHDL_SOURCES [list \
     "$MPROC_DIR/generic_microinstruction_pkg.vhd" \
     "$MPROC_DIR/microinstruction_pkg.vhd" \
     "$MPROC_DIR/microprogram_assembler_pkg.vhd" \
+    "$SOURCE_DIR/hVHDL_microprogam_processor/examples/boost_converter_pkg.vhd" \
     "$MPROC_DIR/microprogram_interface_pkg.vhd" \
     "$MPROC_DIR/execution_unit.vhd" \
     "$MPROC_DIR/arch_fixed_mult_add.vhd" \

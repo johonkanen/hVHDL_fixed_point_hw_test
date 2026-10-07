@@ -256,7 +256,10 @@ models in `test_uart.py` follow the data width.
 
 The programs are written once, as their instructions in order, and laid out
 for each instance by the processor's `microprogram_assembler_pkg`
-(`schedule()`, `repeat()`, `place()`) with the instance's result latency, so
+(`schedule()`, `repeat()`, `place()`) with the instance's result latency;
+the boost converter's program and power-up data come from the processor's
+`examples/boost_converter_pkg.vhd` through `encode_data()`, at each
+instance's data width and radix. With the latency in the layout,
 `program_end` comes when the results are in the data RAM. At L = 7 the boost
 converter step takes 27 clocks and a filter round 7, against 36 and 20 when
 the programs were spaced by hand for the slowest configuration.
@@ -335,10 +338,10 @@ the program.
 
   | board | clock | RAM output register | DSP request registers | calculators | divider / √ | setup slack |
   |---|---|---|---|---|---|---|
-  | Ti60 EVM | 120 MHz | off | off | 4 | 10 | +2.85 ns |
-  | Alchitry Au+ (pre-adder and product registered) | 120 MHz | off | off | 6 | 14 | +0.42 ns |
-  | AXC3000 | 120 MHz | on | off | 5 | 11 | +1.05 ns |
-  | Trion T120 (pre-adder registered) | 60 MHz | on | on | 7 | 15 | +6.21 ns (Fmax 95.6 MHz) |
+  | Ti60 EVM | 120 MHz | off | off | 4 | 10 | +3.13 ns |
+  | Alchitry Au+ (pre-adder and product registered) | 120 MHz | off | off | 6 | 14 | +0.78 ns |
+  | AXC3000 | 120 MHz | on | off | 5 | 11 | +0.34 ns |
+  | Trion T120 (pre-adder registered) | 60 MHz | on | on | 7 | 15 | +5.26 ns (Fmax 87.7 MHz) |
 
   On the AXC3000 the M20K read register straight into a DSP misses 120 MHz
   by 0.41 ns, so it keeps the RAM output register. The Trion starts with

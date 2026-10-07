@@ -113,6 +113,7 @@ architecture rtl of mproc_test is
     use work.multi_port_ram_pkg.all;
     use work.execution_unit_pkg.all;
     use work.microprogram_assembler_pkg.all;
+    use work.boost_converter_pkg.all;
 
     constant word_length        : natural := g_word_length;
     constant instruction_length : natural := g_instruction_length;
@@ -124,34 +125,10 @@ architecture rtl of mproc_test is
     constant instr_ref_subtype : subtype_ref_record :=
         create_ref_subtypes(readports => 1, datawidth => instruction_length, addresswidth => 10);
 
-    -- the boost converter model's data
-    constant vin      : natural := 100;
-    constant duty     : natural := 101;
-    constant load     : natural := 102;
-    constant r        : natural := 103;
-    constant i_gain   : natural := 104;
-    constant u_gain   : natural := 105;
-    constant i        : natural := 106;
-    constant u        : natural := 107;
-    constant vl       : natural := 108;
-    constant ic       : natural := 109;
+    -- the boost converter model of the processor's boost_converter_pkg,
+    -- its data from 100, its program at 128
+    constant boost : boost_converter_map := boost_converter_at(100);
     constant boost_converter : natural := 128;
-
-    function to_fixed (x : real) return std_logic_vector is
-    begin
-        return std_logic_vector(to_signed(integer(x * 2.0**g_radix), word_length));
-    end to_fixed;
-
-    constant program_data : work.dual_port_ram_pkg.ram_array(0 to ref_subtype.address_high)(ref_subtype.data'range) := (
-        vin      => to_fixed(20.0)
-        ,duty    => to_fixed(0.8)
-        ,load    => to_fixed(0.0)
-        ,r       => to_fixed(0.8)
-        ,i_gain  => to_fixed(0.7 / 3.0)
-        ,u_gain  => to_fixed(0.7 / 3.0)
-        ,i       => to_fixed(0.0)
-        ,u       => to_fixed(12.0)
-        ,others  => (others => '0'));
 
     -- the programs, laid out for this instance's configuration
     constant config : processor_config := (
@@ -174,13 +151,6 @@ architecture rtl of mproc_test is
 
     constant low_pass_filter : microprogram := (0 => mi(lp_filter, 96, 97, 96, 98));
 
-    constant boost_converter_step : microprogram := (
-         mi(neg_mpy_add , vl , duty , u      , vin)
-        ,mi(mpy_sub     , ic , duty , i      , load)
-        ,mi(neg_mpy_add , vl , r    , i      , vl)
-        ,mi(mpy_add     , u  , ic   , u_gain , u)
-        ,mi(mpy_add     , i  , vl   , i_gain , i));
-
     constant high_addresses : microprogram := (
          mi(mpy_add , 250 , 200 , 201 , 202)
         ,mi(mpy_sub , 251 , 203 , 204 , 205));
@@ -190,12 +160,15 @@ architecture rtl of mproc_test is
     begin
         retval := place(retval, 0,   schedule(config, one_of_each) & mi(program_end));
         retval := place(retval, 32,  repeat(config, 100, low_pass_filter) & mi(program_end));
-        retval := place(retval, boost_converter, schedule(config, boost_converter_step) & mi(program_end));
+        retval := place(retval, boost_converter, schedule(config, boost_converter_step(boost)) & mi(program_end));
         if address_bits(instruction_length) >= 8 then
             retval := place(retval, 192, schedule(config, high_addresses) & mi(program_end));
         end if;
         return retval;
     end make_program;
+
+    constant program_data : work.dual_port_ram_pkg.ram_array(0 to ref_subtype.address_high)(ref_subtype.data'range)
+        := encode_data(boost_converter_data(boost, boost_converter_example), config, ref_subtype.address_high + 1);
 
     constant test_program : work.dual_port_ram_pkg.ram_array(0 to instr_ref_subtype.address_high)(instr_ref_subtype.data'range)
         := encode(make_program, instruction_length);

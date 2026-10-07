@@ -67,6 +67,7 @@ set_global_assignment -name VHDL_FILE $fixed_dir/submodules/hVHDL_memory_library
 set_global_assignment -name VHDL_FILE $mproc_dir/generic_microinstruction_pkg.vhd
 set_global_assignment -name VHDL_FILE $mproc_dir/microinstruction_pkg.vhd
 set_global_assignment -name VHDL_FILE $mproc_dir/microprogram_assembler_pkg.vhd
+set_global_assignment -name VHDL_FILE $source_dir/hVHDL_microprogam_processor/examples/boost_converter_pkg.vhd
 set_global_assignment -name VHDL_FILE $mproc_dir/microprogram_interface_pkg.vhd
 set_global_assignment -name VHDL_FILE $mproc_dir/execution_unit.vhd
 set_global_assignment -name VHDL_FILE $mproc_dir/arch_fixed_mult_add.vhd
