@@ -31,3 +31,6 @@ trion/outflow/
 trion/work_*/
 trion/*.log
 trion/.lock
+
+# test_all.sh
+test_logs/

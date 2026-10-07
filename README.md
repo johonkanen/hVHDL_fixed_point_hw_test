@@ -64,6 +64,10 @@ trion/build.sh program       # JTAG on the FT2232H channel B, by serial number
 python3 test_uart.py --board trion
 ```
 
+`test_all.sh` programs and tests the boards one after another (all four, or
+the ones named, e.g. `./test_all.sh ti60evm trion`) without building, logs
+each step to `test_logs/` and exits 1 when any board fails.
+
 The boards are reached from WSL2 through `usbipd attach --wsl --busid <b-p>`.
 `test_uart.py` finds each board's UART by USB VID:PID and interface number, so
 the `ttyUSB` numbering does not matter (`--port` overrides it). It sets the
