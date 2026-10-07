@@ -78,6 +78,8 @@ core_tb.add_config(name="no_registers", generics=dict(ram_output_register=False,
 core_tb.add_config(name="dsp_pre_add_register_no_registers", generics=dict(pre_add_register=True, ram_output_register=False, dsp_request_register=False))
 core_tb.add_config(name="dsp_product_register", generics=dict(product_register=True))
 core_tb.add_config(name="dsp_pre_add_and_product_registers", generics=dict(pre_add_register=True, product_register=True))
+core_tb.add_config(name="no_mproc_ram_registers", generics=dict(mproc_program_ram_register=False, mproc_data_ram_register=False))
+core_tb.add_config(name="dsp_pre_add_and_product_registers_no_mproc_ram_registers", generics=dict(pre_add_register=True, product_register=True, mproc_program_ram_register=False, mproc_data_ram_register=False))
 core_tb.add_config(name="spi", generics=dict(use_spi=True))
 core_tb.add_config(name="spi_no_registers", generics=dict(use_spi=True, ram_output_register=False, dsp_request_register=False))
 

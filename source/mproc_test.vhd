@@ -21,6 +21,8 @@
 --        reach : 128 for 32 bit instructions, 256 for 36           RO
 --   +12: result latency L : an instruction reads the result of one
 --        at least L instructions before it                        RO
+--   +13: jump delay slots S, 3 with the program ram's output
+--        register, 2 without                                      RO
 --
 -- the data ram, of g_word_length bits, from g_ram_base_address, bits
 -- 31..0 :
@@ -42,7 +44,7 @@
 -- results as in the data ram. Run times, from the run request to ready :
 --
 --   0  : one of each fixed_mult_add command, operands from 64..87,
---        15 + L clocks
+--        12 + S + L clocks
 --        mpy_add       1 <- 64 * 65 + 66
 --        mpy_sub       2 <- 67 * 68 - 69
 --        neg_mpy_add   3 <- -70 * 71 + 72
@@ -52,11 +54,11 @@
 --        lp_filter     7 <- (82 - 83) * 84 + 83
 --        acc 85, acc 86, get_acc_and_zero 8 <- 85 + 86 + 87
 --   32 : lp_filter 96 <- (97 - 96) * 98 + 96, repeated 100 times,
---        100 * L + 7 clocks
+--        4 + S + 100 * L clocks
 --   192: with 8 bit address fields or more, operands and results
 --        above 127 : mpy_add 250 <- 200 * 201 + 202,
---        mpy_sub 251 <- 203 * 204 - 205, L + 7 clocks
---   128: one time step of an averaged boost converter, 3 * L + 6 clocks (the
+--        mpy_sub 251 <- 203 * 204 - 205, 4 + S + L clocks
+--   128: one time step of an averaged boost converter, 3 + S + 3 * L clocks (the
 --        ac_in_ac_out_lab_power_supply test_processor v3 model), the
 --        inductor current i and capacitor voltage u from the input
 --        voltage, the duty d (as the switch's 1 - D) and the load
@@ -97,6 +99,9 @@ entity mproc_test is
         ;g_radix            : natural := 20
         ;g_pre_add_register : boolean := false -- fixed_dsp's
         ;g_product_register : boolean := false -- fixed_dsp's
+        -- the processor's rams' output registers, microprogram_core's
+        ;g_program_ram_output_register : boolean := true
+        ;g_data_ram_output_register    : boolean := true
     );
     port (
         clock    : in std_logic
@@ -135,7 +140,8 @@ architecture rtl of mproc_test is
         instruction_width => instruction_length
         ,data_width       => word_length
         ,radix            => g_radix
-        ,result_latency   => fixed_point_result_latency(g_pre_add_register, g_product_register));
+        ,result_latency   => fixed_point_result_latency(g_pre_add_register, g_product_register, g_data_ram_output_register)
+        ,delay_slots      => jump_delay_slots(g_program_ram_output_register));
 
     constant one_of_each : microprogram := (
          mi(mpy_add          , 1 , 64 , 65 , 66)
@@ -259,6 +265,7 @@ begin
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 10, std_logic_vector(to_unsigned(instruction_length, 32)));
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 11, std_logic_vector(to_unsigned(ram_size, 32)));
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 12, std_logic_vector(to_unsigned(config.result_latency, 32)));
+            connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 13, std_logic_vector(to_unsigned(config.delay_slots, 32)));
 
             if write_is_requested_to_address(bus_in, g_base_address + 1) then
                 calculate(mproc_in, to_integer(unsigned(start_address(9 downto 0))));
@@ -332,7 +339,9 @@ begin
     end process registers;
 
     u_microprogram_core : entity work.microprogram_core
-    generic map (g_program => test_program, g_data => program_data)
+    generic map (g_program => test_program, g_data => program_data
+        ,g_program_ram_output_register => g_program_ram_output_register
+        ,g_data_ram_output_register    => g_data_ram_output_register)
     port map (
         clock            => clock
         ,mproc_in        => mproc_in
@@ -344,7 +353,8 @@ begin
     );
 
     u_fixed_mult_add : entity work.execution_unit(fixed_mult_add)
-    generic map (g_radix => g_radix, g_pre_add_register => g_pre_add_register, g_product_register => g_product_register)
+    generic map (g_radix => g_radix, g_pre_add_register => g_pre_add_register, g_product_register => g_product_register
+        ,g_data_ram_output_register => g_data_ram_output_register)
     port map (
         clock            => clock
         ,unit_in         => unit_in

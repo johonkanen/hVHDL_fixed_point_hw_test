@@ -232,12 +232,13 @@ are in the program RAM, the operands and results in the 128-word data RAM:
 | 136      | background runs since bit 0 of 134 was last set                  | RO |
 | 137, 138 | data word width, instruction width (32, 32)                      | RO |
 | 139      | data RAM words, as far as the address fields reach (128)         | RO |
-| 140      | result latency L: an instruction reads a result written L or more instructions before it (7, plus 1 for each of the pre-adder and product registers) | RO |
+| 140      | result latency L: an instruction reads a result written L or more instructions before it (7, plus 1 for each of the pre-adder and product registers, minus 1 without the data RAM's output register) | RO |
+| 141      | jump delay slots S: 3, or 2 without the program RAM's output register | RO |
 | 256..383 | data RAM: writes go to the processor's RAM, reads come from a copy kept from its RAM writes | RW |
 | 384..511 | the data RAM words' bits above 31 (none at 32 bits)              | RW |
 
 A second instance has 36-bit data and 36-bit instructions at radix 24, the
-same programs and registers from 144 (144..156). Its instructions have 8-bit
+same programs and registers from 144 (144..157). Its instructions have 8-bit
 address fields, so its data RAM is 256 words: bits 31..0 at 512..767 and
 bits 35..32 at 768..1023. A read from the high window gives a word's bits
 above 31 sign extended; a write there sets the bits above 31 of the next
@@ -249,10 +250,10 @@ models in `test_uart.py` follow the data width.
 
 | program | contents |
 |--------:|----------|
-| 0  | one of each multiply-add command (`mpy_add`, `mpy_sub`, `neg_mpy_add`, `neg_mpy_sub`, `a_add_b_mpy_c`, `a_sub_b_mpy_c`, `lp_filter`) on operands at 64..84 into 1..7, and `acc`, `acc`, `get_acc_and_zero` of 85..87 into 8; 15 + L clock edges |
-| 32 | the low pass filter `lp_filter` y ← (u − y) · g + y on y = 96, u = 97, g = 98, repeated 100 times; 100 · L + 7 clock edges |
-| 128 | one Euler step of the averaged boost converter model from `ac_in_ac_out_lab_power_supply`'s `test_processor` v3; 3 · L + 6 clock edges |
-| 192 | (36-bit instance) `mpy_add` and `mpy_sub` on operands at 200..205 into 250, 251; L + 7 clock edges |
+| 0  | one of each multiply-add command (`mpy_add`, `mpy_sub`, `neg_mpy_add`, `neg_mpy_sub`, `a_add_b_mpy_c`, `a_sub_b_mpy_c`, `lp_filter`) on operands at 64..84 into 1..7, and `acc`, `acc`, `get_acc_and_zero` of 85..87 into 8; 12 + S + L clock edges |
+| 32 | the low pass filter `lp_filter` y ← (u − y) · g + y on y = 96, u = 97, g = 98, repeated 100 times; 4 + S + 100 · L clock edges |
+| 128 | one Euler step of the averaged boost converter model from `ac_in_ac_out_lab_power_supply`'s `test_processor` v3; 3 + S + 3 · L clock edges |
+| 192 | (36-bit instance) `mpy_add` and `mpy_sub` on operands at 200..205 into 250, 251; 4 + S + L clock edges |
 
 The programs are written once, as their instructions in order, and laid out
 for each instance by the processor's `microprogram_assembler_pkg`
@@ -260,9 +261,16 @@ for each instance by the processor's `microprogram_assembler_pkg`
 the boost converter's program and power-up data come from the processor's
 `examples/boost_converter_pkg.vhd` through `encode_data()`, at each
 instance's data width and radix. With the latency in the layout,
-`program_end` comes when the results are in the data RAM. At L = 7 the boost
-converter step takes 27 clocks and a filter round 7, against 36 and 20 when
-the programs were spaced by hand for the slowest configuration.
+`program_end` comes when the results are in the data RAM.
+
+Every board builds the processors' program and data RAMs without their
+output registers (the core's `g_mproc_program_ram_output_register` and
+`g_mproc_data_ram_output_register`): a RAM read takes one clock, so the
+result latency is one less and a `jump` has 2 delay slots. That gives
+L = 6 on the Ti60 and AXC3000, 7 on the Trion (pre-adder register) and 8 on
+the Alchitry (pre-adder and product registers); at L = 6 the boost
+converter step takes 23 clocks and a filter round 6, against 36 and 20 when
+the programs were spaced by hand with every register in.
 
 The boost converter model, with the duty d standing for the switch's 1 − D:
 
@@ -338,10 +346,10 @@ the program.
 
   | board | clock | RAM output register | DSP request registers | calculators | divider / √ | setup slack |
   |---|---|---|---|---|---|---|
-  | Ti60 EVM | 120 MHz | off | off | 4 | 10 | +3.13 ns |
-  | Alchitry Au+ (pre-adder and product registered) | 120 MHz | off | off | 6 | 14 | +0.78 ns |
-  | AXC3000 | 120 MHz | on | off | 5 | 11 | +0.34 ns |
-  | Trion T120 (pre-adder registered) | 60 MHz | on | on | 7 | 15 | +5.26 ns (Fmax 87.7 MHz) |
+  | Ti60 EVM | 120 MHz | off | off | 4 | 10 | +2.97 ns |
+  | Alchitry Au+ (pre-adder and product registered) | 120 MHz | off | off | 6 | 14 | +0.44 ns |
+  | AXC3000 | 120 MHz | on | off | 5 | 11 | +1.13 ns |
+  | Trion T120 (pre-adder registered) | 60 MHz | on | on | 7 | 15 | +5.41 ns (Fmax 88.8 MHz) |
 
   On the AXC3000 the M20K read register straight into a DSP misses 120 MHz
   by 0.41 ns, so it keeps the RAM output register. The Trion starts with

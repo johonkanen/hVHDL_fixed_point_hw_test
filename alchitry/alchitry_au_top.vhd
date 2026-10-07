@@ -67,7 +67,9 @@ begin
         ,g_dsp_pre_add_register => true
         ,g_dsp_product_register => true
         ,g_ram_output_register  => false
-        ,g_dsp_request_register => false
+        ,g_dsp_request_register => false        -- the microprogram processors' rams without their output registers
+        ,g_mproc_program_ram_output_register => false
+        ,g_mproc_data_ram_output_register    => false
     )
     port map (
         clock                    => main_clock

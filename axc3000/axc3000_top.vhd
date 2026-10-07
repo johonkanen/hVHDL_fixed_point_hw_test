@@ -70,7 +70,9 @@ begin
         -- the m20k needs its output register in front of the dsp at 120 MHz
         -- (-0.41 ns without both registers), the dsp requests go unregistered
         ,g_ram_output_register => true
-        ,g_dsp_request_register => false
+        ,g_dsp_request_register => false        -- the microprogram processors' rams without their output registers
+        ,g_mproc_program_ram_output_register => false
+        ,g_mproc_data_ram_output_register    => false
     )
     port map (
         clock                    => core_clock
