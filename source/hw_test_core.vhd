@@ -110,6 +110,8 @@ entity hw_test_core is
         -- the processors' program cache, a repeated start a delay slot
         -- count of clocks sooner
         ;g_mproc_program_cache : boolean := true
+        -- and static lines for programs 0 and 128, sooner from the first start
+        ;g_mproc_static_cache : boolean := true
         -- the 36 bit processor's math unit : its lut_divider's shifter
         -- stages, 2 clocks more each
         ;g_mproc_divider_shifter_stages : positive := 2
@@ -557,7 +559,8 @@ begin
         ,g_product_register => g_dsp_product_register
         ,g_program_ram_output_register => g_mproc_program_ram_output_register
         ,g_data_ram_output_register    => g_mproc_data_ram_output_register
-        ,g_program_cache               => g_mproc_program_cache)
+        ,g_program_cache               => g_mproc_program_cache
+        ,g_static_cache                => g_mproc_static_cache)
     port map (
         clock    => clock
         ,reset   => system_reset
@@ -577,7 +580,8 @@ begin
         ,g_product_register => g_dsp_product_register
         ,g_program_ram_output_register => g_mproc_program_ram_output_register
         ,g_data_ram_output_register    => g_mproc_data_ram_output_register
-        ,g_program_cache               => g_mproc_program_cache)
+        ,g_program_cache               => g_mproc_program_cache
+        ,g_static_cache                => g_mproc_static_cache)
     port map (
         clock    => clock
         ,reset   => system_reset

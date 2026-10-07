@@ -71,7 +71,7 @@ Register map (source/hw_test_core.vhd) :
     140 result latency L : the programs are scheduled for it      RO
     141 jump delay slots S, 2 without the program ram's register    RO
     142 the math unit's result latency, 0 without one               RO
-    143 program cache depth C, 0 without one, a repeat start C less RO
+    143 program cache : bits 7..0 depth C, bit 8 static 0 and 128, bit 9 dynamic RO
         run times 0 : 12 + S + L, 32 : 4 + S + 100 L,
         128 : 3 + S + 3 L, 192 : 4 + S + L
     384..511 the data ram's bits above 31 (none at 32 bits)          RW
@@ -857,9 +857,14 @@ class Mproc:
         self.slots = uart.read(base + 13)
         # the math unit's result latency, 0 without one
         self.math_latency = uart.read(base + 14)
-        # the program cache's depth, 0 without one : a run of the program
-        # started last takes that many clock edges less
-        self.cache = uart.read(base + 15)
+        # the program cache : its depth, 0 without one, the programs in
+        # static lines and whether it has a dynamic line. A start from a
+        # line takes depth clock edges less : a static line's program
+        # always, the dynamic line's when it was started last of the others
+        cache = uart.read(base + 15)
+        self.cache = cache & 0xFF
+        self.static = {0, 128} if cache & 0x100 else set()
+        self.dynamic = bool(cache & 0x200)
         self.last_start = None
         self.cached_runs = 0
 
@@ -883,9 +888,11 @@ class Mproc:
         for _ in range(100):
             if self.uart.read(self.base + 2) == 0:
                 break
-        saved = self.cache if start == self.last_start else 0
-        self.cached_runs += saved > 0
-        self.last_start = start
+        hit = start in self.static or (self.dynamic and start == self.last_start)
+        saved = self.cache if hit else 0
+        self.cached_runs += hit
+        if start not in self.static:
+            self.last_start = start
         return self.uart.read(self.base + 3), self.uart.read(self.base + 4) + saved
 
     def write_boost(self, **values):
@@ -906,7 +913,8 @@ def run_mproc(mp, rounds, r):
     latency, slots = mp.latency, mp.slots
     print(f"microprogram processor, {w} bit data and {mp.uart.read(mp.base + 10)} bit instructions, "
           f"fixed_mult_add at radix {radix}, result latency {latency}, jump delay slots {slots}, "
-          f"program cache depth {mp.cache}")
+          f"program cache depth {mp.cache}, static lines {sorted(mp.static)}, "
+          f"{'a' if mp.dynamic else 'no'} dynamic line")
     mp.uart.write(mp.base + 6, 0)
 
     values = [wrap(r.random.getrandbits(w), w) for _ in range(mp.ram_size)]

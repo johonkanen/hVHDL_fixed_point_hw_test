@@ -58,8 +58,11 @@ begin
         -- register on to start with
         ,g_dsp_pre_add_register => true
         ,g_ram_output_register  => true
-        ,g_dsp_request_register => true        -- the microprogram processors' rams without their output registers
-        ,g_mproc_program_ram_output_register => false
+        ,g_dsp_request_register => true
+        -- the microprogram processors' program ram with its output register,
+        -- 3 jump delay slots and a 3 word program cache line (the only
+        -- board with them), the data ram without
+        ,g_mproc_program_ram_output_register => true
         ,g_mproc_data_ram_output_register    => false
         -- the 36 bit processor's math unit : its fixed_dsps' pre-adder and
         -- product registers, its tables' ram output and dsp request registers

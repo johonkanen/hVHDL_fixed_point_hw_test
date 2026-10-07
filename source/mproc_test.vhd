@@ -24,8 +24,11 @@
 --   +13: jump delay slots S, 3 with the program ram's output
 --        register, 2 without                                      RO
 --   +14: the math unit's result latency, 0 without one            RO
---   +15: the program cache's depth, S with g_program_cache, else 0 :
---        a run of the program last started takes S clocks less     RO
+--   +15: the program cache : bits 7..0 its depth S, 0 without one,
+--        bit 8 programs 0 and 128 in static lines (g_static_cache),
+--        bit 9 a dynamic line (g_program_cache). A start from a line
+--        takes S clocks less : a static line's program from the first
+--        start on, the dynamic line's when started last           RO
 --
 -- the data ram, of g_word_length bits, from g_ram_base_address, bits
 -- 31..0 :
@@ -115,6 +118,9 @@ entity mproc_test is
         -- program's first instructions from a cache line, jump delay slots
         -- clocks sooner
         ;g_program_cache : boolean := false
+        -- static program cache lines for programs 0 and 128 (the boost
+        -- converter), a start from them S clocks sooner from the first on
+        ;g_static_cache : boolean := false
         -- a fixed_math unit (division, square root, sine and cosine) beside fixed_mult_add, and its
         -- divider's shifter stages
         ;g_math_unit : boolean := false
@@ -240,6 +246,14 @@ architecture rtl of mproc_test is
     -- explicitly initialised : Vivado ignores the implicit false and gives
     -- the request's register, a set flop, an init of 1, a start of program
     -- 0 at configuration
+    function cached_programs return program_start_array is
+    begin
+        if g_static_cache then
+            return (0, boost_converter);
+        end if;
+        return (1 to 0 => 0);
+    end cached_programs;
+
     signal mproc_in  : microprogram_processor_in_record := (processor_requested => false, start_address => 0);
     signal mproc_out : microprogram_processor_out_record;
 
@@ -331,7 +345,8 @@ begin
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 13, std_logic_vector(to_unsigned(config.delay_slots, 32)));
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 14, std_logic_vector(to_unsigned(config.math_latency, 32)));
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 15
-                , std_logic_vector(to_unsigned(config.delay_slots * boolean'pos(g_program_cache), 32)));
+                , std_logic_vector(to_unsigned(config.delay_slots * boolean'pos(g_program_cache or g_static_cache)
+                    + 256 * boolean'pos(g_static_cache) + 512 * boolean'pos(g_program_cache), 32)));
 
             if write_is_requested_to_address(bus_in, g_base_address + 1) then
                 calculate(mproc_in, to_integer(unsigned(start_address(9 downto 0))));
@@ -408,7 +423,8 @@ begin
     generic map (g_program => test_program, g_data => program_data
         ,g_program_ram_output_register => g_program_ram_output_register
         ,g_data_ram_output_register    => g_data_ram_output_register
-        ,g_program_cache               => g_program_cache)
+        ,g_program_cache               => g_program_cache
+        ,g_cached_programs             => cached_programs)
     port map (
         clock            => clock
         ,mproc_in        => mproc_in

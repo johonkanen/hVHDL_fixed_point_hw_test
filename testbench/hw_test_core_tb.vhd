@@ -581,6 +581,9 @@ begin
         check_register(mproc_base + 5, mproc_radix);
         check_register(mproc_base + 12, mproc_latency);
         check_register(mproc_base + 13, mproc_slots);
+        -- hw_test_core's default program cache : static lines for 0 and
+        -- 128, their runs mproc_slots shorter from the first, and a dynamic line
+        check_register(mproc_base + 15, mproc_slots + 256 + 512);
         write_register(mproc_ram_base + 1, x"5a5a5a5a"); -- program 0 overwrites it
         check_register(mproc_ram_base + 1, x"5a5a5a5a");
         x := x"1234abcd";
@@ -590,7 +593,7 @@ begin
             write_register(mproc_ram_base + i, operands(i));
         end loop;
         check_register(mproc_ram_base + 70, operands(70));
-        run_program(0, clocks => 12 + mproc_slots + mproc_latency);
+        run_program(0, clocks => 12 + mproc_latency);
         check_register(mproc_ram_base + 1, mult_add(operands(64), operands(65), operands(66)));
         check_register(mproc_ram_base + 2, mult_sub(operands(67), operands(68), operands(69)));
         check_register(mproc_ram_base + 3, mult_add(minus(operands(70)), operands(71), operands(72)));
@@ -618,7 +621,7 @@ begin
         i_state := to_fixed(0.0);
         u_state := to_fixed(12.0);
         boost_steps(1, i_state, u_state, to_fixed(20.0), to_fixed(0.8), to_fixed(0.0), to_fixed(0.8), to_fixed(0.7 / 3.0), to_fixed(0.7 / 3.0));
-        run_program(128, clocks => 3 + mproc_slots + 3 * mproc_latency);
+        run_program(128, clocks => 3 + 3 * mproc_latency);
         check_register(mproc_ram_base + 106, i_state);
         check_register(mproc_ram_base + 107, u_state);
 
@@ -669,7 +672,7 @@ begin
             exit when data1 = x"00000000";
         end loop;
         check_register(mproc36_base + 3, 1);
-        check_register(mproc36_base + 4, 12 + mproc_slots + mproc_latency);
+        check_register(mproc36_base + 4, 12 + mproc_latency); -- from its static line
         check_word36(1, mult_add36(operands36(64), operands36(65), operands36(66)));
         check_word36(2, mult_add36(operands36(67), operands36(68), operands36(69), subtract => true));
         check_word36(3, mult_add36(-operands36(70), operands36(71), operands36(72)));
