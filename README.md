@@ -269,10 +269,10 @@ the program.
 
   | board | clock | RAM output register | DSP request registers | calculators | divider / √ | setup slack |
   |---|---|---|---|---|---|---|
-  | Ti60 EVM | 120 MHz | off | off | 4 | 10 | +3.21 ns |
-  | Alchitry Au+ (pre-adder registered) | 120 MHz | off | off | 5 | 12 | +0.37 ns |
-  | AXC3000 | 120 MHz | on | off | 5 | 11 | +1.03 ns |
-  | Trion T120 (pre-adder registered) | 60 MHz | on | on | 7 | 15 | +6.37 ns (Fmax 97.1 MHz) |
+  | Ti60 EVM | 120 MHz | off | off | 4 | 10 | +3.23 ns |
+  | Alchitry Au+ (pre-adder registered) | 120 MHz | off | off | 5 | 12 | +0.29 ns |
+  | AXC3000 | 120 MHz | on | off | 5 | 11 | +1.02 ns |
+  | Trion T120 (pre-adder registered) | 60 MHz | on | on | 7 | 15 | +6.14 ns (Fmax 95.0 MHz) |
 
   On the AXC3000 the M20K read register straight into a DSP misses 120 MHz
   by 0.41 ns, so it keeps the RAM output register. The Trion starts with
