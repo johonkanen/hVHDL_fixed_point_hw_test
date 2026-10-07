@@ -3,7 +3,9 @@
 Hardware test builds for [hVHDL_fixed_point](https://github.com/hVHDL/hVHDL_fixed_point) on
 four boards: a register core on `fpga_interconnect` with the library's
 `fixed_dsp(rtl)`, lookup table calculators, `lut_divider` and
-`full_range_sqrt` behind it. `test_uart.py` checks every result bit for bit
+`full_range_sqrt` behind it, and the fixed point microprogram processor of
+[hVHDL_microprogam_processor](https://github.com/hVHDL/hVHDL_microprogam_processor).
+`test_uart.py` checks every result bit for bit
 against Python models of the architectures.
 
 The core, `source/hw_test_core.vhd`, only sees the `fpga_interconnect` buses.
@@ -25,6 +27,7 @@ source/                       submodules (hVHDL_fixed_point, fpga_communication,
                               hVHDL_microprogam_processor) and the shared core
   hw_test_core.vhd            board-independent register block
   lut_sweep.vhd, divider_sweep.vhd, sqrt_sweep.vhd   test engines
+  mproc_test.vhd              the microprogram processor and its test programs
 testbench/hw_test_core_tb.vhd over the UART, or SPI with use_spi
 vunit_run.py                  simulation (nvc / ghdl through VUnit)
 test_uart.py                  hardware test, --board au | axc3000 | ti60evm | trion
@@ -210,6 +213,33 @@ between the back-to-back requests of one burst (register 38).
 edge cases, a 1000-request accumulate burst, the accumulator reset, and random
 operands with every flag combination and bursts of up to 300.
 
+The microprogram processor: `hVHDL_microprogam_processor`'s
+`microprogram_controller` with `instruction(fixed_mult_add)`, 32-bit data at
+radix 20, through `source/mproc_test.vhd`, registers from 128. The programs
+are in the program RAM, the operands and results in the 128-word data RAM:
+
+| addr     | contents                                                         |    |
+|---------:|------------------------------------------------------------------|----|
+| 128      | program start address                                            | RW |
+| 129      | write → run the program from 128                                 | WO |
+| 130      | 1 while the processor runs                                       | RO |
+| 131      | ready pulses since the last run                                  | RO |
+| 132      | clock edges from the run request to ready                        | RO |
+| 133      | radix                                                            | RO |
+| 256..383 | data RAM: writes go to the processor's RAM, reads come from a copy kept from its RAM writes | RW |
+
+| program | contents |
+|--------:|----------|
+| 0  | one of each multiply-add command (`mpy_add`, `mpy_sub`, `neg_mpy_add`, `neg_mpy_sub`, `a_add_b_mpy_c`, `a_sub_b_mpy_c`, `lp_filter`) on operands at 64..84 into 1..7, and `acc`, `acc`, `get_acc_and_zero` of 85..87 into 8; 16 clock edges |
+| 32 | `set_rpt 99`, then the low pass filter `lp_filter` y ← (u − y − 1) · g + y on y = 96, u = 97, g = 98 in a `jump` loop, 100 rounds; 2007 clock edges |
+
+`fixed_mult_add` gives bits radix + 31 … radix of a · b + c · 2^radix, and
+its "negations" are bitwise `not` (−x − 1). `test_uart.py` checks both
+programs bit for bit against a model, with random and edge-case operands,
+and their run times. A `jump` takes effect after the next three
+instructions, which are already fetched; a `program_end` among them ends
+the program.
+
 ## Board notes
 
 * **Alchitry Au+ registers the pre-adder.** By default `fixed_dsp(rtl)` puts
@@ -237,10 +267,10 @@ operands with every flag combination and bursts of up to 300.
 
   | board | clock | RAM output register | DSP request registers | calculators | divider / √ | setup slack |
   |---|---|---|---|---|---|---|
-  | Ti60 EVM | 120 MHz | off | off | 4 | 10 | +3.20 ns |
-  | Alchitry Au+ (pre-adder registered) | 120 MHz | off | off | 5 | 12 | +0.52 ns |
-  | AXC3000 | 120 MHz | on | off | 5 | 11 | +1.26 ns |
-  | Trion T120 (pre-adder registered) | 60 MHz | on | on | 7 | 15 | +6.53 ns (Fmax 98.6 MHz) |
+  | Ti60 EVM | 120 MHz | off | off | 4 | 10 | +3.38 ns |
+  | Alchitry Au+ (pre-adder registered) | 120 MHz | off | off | 5 | 12 | +0.42 ns |
+  | AXC3000 | 120 MHz | on | off | 5 | 11 | +0.88 ns |
+  | Trion T120 (pre-adder registered) | 60 MHz | on | on | 7 | 15 | +5.84 ns (Fmax 92.3 MHz) |
 
   On the AXC3000 the M20K read register straight into a DSP misses 120 MHz
   by 0.41 ns, so it keeps the RAM output register. The Trion starts with

@@ -47,7 +47,21 @@ lib.add_source_files(FIXED / "fixed_point_scaling/fixed_point_scaling_pkg.vhd")
 lib.add_source_files(FIXED / "lut_divider/lut_divider.vhd")
 lib.add_source_files(FIXED / "full_range_sqrt/full_range_sqrt.vhd")
 
+# hVHDL_microprogam_processor, with the fixed point and memory library
+# above instead of its own submodules
+MPROC = SOURCE / "hVHDL_microprogam_processor/vhdl2008"
+lib.add_source_files(FIXED / "real_to_fixed/real_to_fixed_pkg.vhd")
+lib.add_source_files(MEMORY / "mpram_w_configurable_records.vhd")
+lib.add_source_files(MPROC / "vhdl2008_microinstruction_pkg.vhd")
+lib.add_source_files(MPROC / "def_microinstruction_pkg.vhd")
+lib.add_source_files(MPROC / "microprogram_processor_pkg.vhd")
+lib.add_source_files(MPROC / "instruction_pkg.vhd")
+lib.add_source_files(MPROC / "arch_fixed_mult_add.vhd")
+lib.add_source_files(MPROC / "microprogram_sequencer.vhd")
+lib.add_source_files(MPROC / "microprogram_controller.vhd")
+
 lib.add_source_files(SOURCE / "git_hash_pkg.vhd")
+lib.add_source_files(SOURCE / "mproc_test.vhd")
 lib.add_source_files(SOURCE / "lut_sweep.vhd")
 lib.add_source_files(SOURCE / "divider_sweep.vhd")
 lib.add_source_files(SOURCE / "sqrt_sweep.vhd")

@@ -14,6 +14,7 @@ set ROOT_DIR   [file dirname $BOARD_DIR]
 set SOURCE_DIR "$ROOT_DIR/source"
 set COM_DIR    "$SOURCE_DIR/fpga_communication"
 set FIXED_DIR  "$SOURCE_DIR/hVHDL_fixed_point"
+set MPROC_DIR  "$SOURCE_DIR/hVHDL_microprogam_processor/vhdl2008"
 set OUTPUT_DIR "$BOARD_DIR/output"
 
 file mkdir $OUTPUT_DIR
@@ -38,10 +39,20 @@ set VHDL_SOURCES [list \
     "$FIXED_DIR/fixed_point_scaling/fixed_point_scaling_pkg.vhd" \
     "$FIXED_DIR/lut_divider/lut_divider.vhd" \
     "$FIXED_DIR/full_range_sqrt/full_range_sqrt.vhd" \
+    "$FIXED_DIR/real_to_fixed/real_to_fixed_pkg.vhd" \
+    "$FIXED_DIR/submodules/hVHDL_memory_library/vhdl2008/mpram_w_configurable_records.vhd" \
+    "$MPROC_DIR/vhdl2008_microinstruction_pkg.vhd" \
+    "$MPROC_DIR/def_microinstruction_pkg.vhd" \
+    "$MPROC_DIR/microprogram_processor_pkg.vhd" \
+    "$MPROC_DIR/instruction_pkg.vhd" \
+    "$MPROC_DIR/arch_fixed_mult_add.vhd" \
+    "$MPROC_DIR/microprogram_sequencer.vhd" \
+    "$MPROC_DIR/microprogram_controller.vhd" \
     "$SOURCE_DIR/git_hash_pkg.vhd" \
     "$SOURCE_DIR/lut_sweep.vhd" \
     "$SOURCE_DIR/divider_sweep.vhd" \
     "$SOURCE_DIR/sqrt_sweep.vhd" \
+    "$SOURCE_DIR/mproc_test.vhd" \
     "$SOURCE_DIR/hw_test_core.vhd" \
     "$BOARD_DIR/main_clocks.vhd" \
     "$BOARD_DIR/alchitry_au_top.vhd" \

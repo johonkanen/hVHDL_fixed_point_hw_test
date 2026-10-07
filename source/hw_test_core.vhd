@@ -64,6 +64,12 @@
 --   112..124 : see sqrt_sweep.vhd, the sqrt table from the g_root_*
 --              generics
 --
+-- hVHDL_microprogam_processor's microprogram_controller with
+-- instruction(fixed_mult_add), 32 bit data at radix 20 :
+--
+--   128..133 : see mproc_test.vhd
+--   256..383 : its data ram
+--
 -- fixed_dsp recomputes its result register on every clock, the core drives
 -- init_fixed_dsp while idle so an accumulate only carries across back to
 -- back requests of one burst
@@ -130,6 +136,7 @@ architecture rtl of hw_test_core is
     signal bus_from_sqrt           : fpga_interconnect_record := init_fpga_interconnect;
     signal bus_from_divider        : fpga_interconnect_record := init_fpga_interconnect;
     signal bus_from_root           : fpga_interconnect_record := init_fpga_interconnect;
+    signal bus_from_mproc          : fpga_interconnect_record := init_fpga_interconnect;
 
     signal loopback_register : std_logic_vector(31 downto 0) := (others => '0');
     signal read_counter      : unsigned(31 downto 0) := (others => '0');
@@ -252,7 +259,7 @@ begin
                 write_data_to_address(bus_from_top, 0, register_bank(bank_index));
             end if;
 
-            bus_to_communications <= bus_from_top and bus_from_dsp and bus_from_sine and bus_from_reciprocal and bus_from_sqrt and bus_from_divider and bus_from_root;
+            bus_to_communications <= bus_from_top and bus_from_dsp and bus_from_sine and bus_from_reciprocal and bus_from_sqrt and bus_from_divider and bus_from_root and bus_from_mproc;
 
             if system_reset = '1' then
                 loopback_register     <= (others => '0');
@@ -507,6 +514,16 @@ begin
         ,reset   => system_reset
         ,bus_in  => bus_from_communications
         ,bus_out => bus_from_root
+    );
+
+------------------------------------------------------------------------
+    u_mproc_test : entity work.mproc_test
+    generic map (g_base_address => 128, g_ram_base_address => 256)
+    port map (
+        clock    => clock
+        ,reset   => system_reset
+        ,bus_in  => bus_from_communications
+        ,bus_out => bus_from_mproc
     );
 
 end architecture rtl;

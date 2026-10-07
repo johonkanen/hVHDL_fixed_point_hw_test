@@ -186,6 +186,9 @@ begin
         end check_register;
 
         variable data1, data2 : std_logic_vector(31 downto 0);
+        variable x, y         : std_logic_vector(31 downto 0);
+        type word_array is array (natural range <>) of std_logic_vector(31 downto 0);
+        variable operands     : word_array(64 to 87);
 
         constant sine_base       : natural := 48;
         constant reciprocal_base : natural := 64;
@@ -344,6 +347,39 @@ begin
             check_register(base + 8, count);
         end check_sweep;
 
+        -- mproc_test : fixed_mult_add's a * b + c * 2**radix, bits radix + 31
+        -- downto radix
+        constant mproc_base     : natural := 128;
+        constant mproc_ram_base : natural := 256;
+        constant mproc_radix    : natural := 20;
+
+        function mult_add (a, b, c : std_logic_vector(31 downto 0)) return std_logic_vector is
+            variable result : signed(63 downto 0);
+        begin
+            result := signed(a) * signed(b) + shift_left(resize(signed(c), 64), mproc_radix);
+            return std_logic_vector(result(mproc_radix + 31 downto mproc_radix));
+        end mult_add;
+
+        function sum (a, b : std_logic_vector(31 downto 0)) return std_logic_vector is
+        begin
+            return std_logic_vector(signed(a) + signed(b));
+        end sum;
+
+        -- run a program and check how many clocks it took to ready
+        procedure run_program (start : natural; clocks : natural) is
+            variable data : std_logic_vector(31 downto 0);
+        begin
+            write_register(mproc_base, start);
+            write_register(mproc_base + 1, 1);
+            for i in 1 to 100 loop
+                read_register(mproc_base + 2, data);
+                exit when data = x"00000000";
+            end loop;
+            check_register(mproc_base + 2, 0);
+            check_register(mproc_base + 3, 1);
+            check_register(mproc_base + 4, clocks);
+        end run_program;
+
     begin
         test_runner_setup(runner, runner_cfg);
         wait until reset = '0';
@@ -462,6 +498,39 @@ begin
         check_register(root_base + 10, root_table_word_length);
         check_register(root_base + 11, root_table_radix);
         check_register(root_base + 12, root_x_frac_width);
+
+        -- microprogram processor, program 0 : one of each command
+        check_register(mproc_base + 5, mproc_radix);
+        write_register(mproc_ram_base + 1, x"5a5a5a5a"); -- program 0 overwrites it
+        check_register(mproc_ram_base + 1, x"5a5a5a5a");
+        x := x"1234abcd";
+        for i in 64 to 87 loop
+            x := galois_step(x);
+            operands(i) := std_logic_vector(shift_right(signed(x), 4));
+            write_register(mproc_ram_base + i, operands(i));
+        end loop;
+        check_register(mproc_ram_base + 70, operands(70));
+        run_program(0, clocks => 16);
+        check_register(mproc_ram_base + 1, mult_add(operands(64), operands(65), operands(66)));
+        check_register(mproc_ram_base + 2, mult_add(operands(67), operands(68), not operands(69)));
+        check_register(mproc_ram_base + 3, mult_add(not operands(70), operands(71), operands(72)));
+        check_register(mproc_ram_base + 4, mult_add(not operands(73), operands(74), not operands(75)));
+        check_register(mproc_ram_base + 5, mult_add(sum(operands(76), operands(77)), operands(78), x"00000000"));
+        check_register(mproc_ram_base + 6, mult_add(sum(operands(79), not operands(80)), operands(81), x"00000000"));
+        check_register(mproc_ram_base + 7, mult_add(sum(operands(82), not operands(83)), operands(84), operands(83)));
+        check_register(mproc_ram_base + 8, sum(sum(operands(85), operands(86)), operands(87)));
+
+        -- program 32 : 100 rounds of the low pass filter y += (u - y) * g
+        y := x"00000000";
+        write_register(mproc_ram_base + 96, y);
+        write_register(mproc_ram_base + 97, 3 * 2**mproc_radix);    -- u = 3.0
+        write_register(mproc_ram_base + 98, 2**mproc_radix / 20);              -- g = 0.05
+        for i in 1 to 100 loop
+            y := mult_add(sum(std_logic_vector(to_signed(3 * 2**mproc_radix, 32)), not y)
+                , std_logic_vector(to_signed(2**mproc_radix / 20, 32)), y);
+        end loop;
+        run_program(32, clocks => 2007);
+        check_register(mproc_ram_base + 96, y);
 
         test_runner_cleanup(runner);
         wait;

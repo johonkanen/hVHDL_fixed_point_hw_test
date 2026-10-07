@@ -59,6 +59,12 @@ Register map (source/hw_test_core.vhd) :
     117 sweep mode : bit 0 lfsr radicands, bit 1 gaps               RW
     118 s1   119 s2   120 ready pulses                              RO
     121 table index width  122 table word length  123 table radix  124 x_frac width  RO
+
+    microprogram_controller with instruction(fixed_mult_add), 32 bit data
+    128 program start address   129 write -> run the program        RW/WO
+    130 busy   131 ready pulses   132 clock edges from run to ready    RO
+    133 radix                                                        RO
+    256..383 data ram : write -> the ram, read <- a copy of it       RW
     base +0 input   +1 write -> one request   +2 result               RW/WO/RO
          +3 latency, request at the input to ready, clock edges     RO
          +4 write N -> sweep N inputs from +5, one per clock (0 = 65536) WO
@@ -501,6 +507,7 @@ def run(uart, board, rounds, r):
         run_lut_calculator(uart, name, base, model, edges, rounds, r)
     run_lut_divider(uart, rounds, r)
     run_full_range_sqrt(uart, rounds, r)
+    run_microprogram_processor(uart, rounds, r)
 
     if not hasattr(uart, "uart"):
         return
@@ -764,6 +771,86 @@ def run_full_range_sqrt(uart, rounds, r):
         if exact > 2**20:
             worst = max(worst, abs(full_range_sqrt_model(x, ROOT_RADIX, table=table) - exact) / exact)
     print(f"        full_range_sqrt relative error up to {worst:.2e} for roots above 2**20")
+
+
+MPROC_BASE = 128
+MPROC_RAM = 256
+
+
+def mult_add_model(a, b, c, radix):
+    """bit exact model of fixed_mult_add : bits radix + 31 downto radix of
+    a * b + c * 2**radix, the operands signed 32 bit"""
+    return wrap((a * b + (c << radix)) >> radix, 32)
+
+
+def mproc_ops_model(m, radix):
+    """mproc_test.vhd's program 0 from the data ram words m[64..87], the
+    results for addresses 1..8 ; not x = -x - 1"""
+    def ma(a, b, c):
+        return mult_add_model(a, b, c, radix)
+    return [ma(m[64], m[65], m[66]),
+            ma(m[67], m[68], ~m[69]),
+            ma(~m[70], m[71], m[72]),
+            ma(~m[73], m[74], ~m[75]),
+            ma(wrap(m[76] + m[77], 32), m[78], 0),
+            ma(wrap(m[79] + ~m[80], 32), m[81], 0),
+            ma(wrap(m[82] + ~m[83], 32), m[84], m[83]),
+            wrap(m[85] + m[86] + m[87], 32)]
+
+
+def mproc_filter_model(y, u, g, radix, rounds=100):
+    """program 32 : rounds of lp_filter y <- (u + not y) * g + y"""
+    for _ in range(rounds):
+        y = mult_add_model(wrap(u + ~y, 32), g, y, radix)
+    return y
+
+
+def run_program(uart, start):
+    uart.write(MPROC_BASE + 0, start)
+    uart.write(MPROC_BASE + 1, 1)
+    for _ in range(100):
+        if uart.read(MPROC_BASE + 2) == 0:
+            break
+    return uart.read(MPROC_BASE + 3), uart.read(MPROC_BASE + 4)
+
+
+def run_microprogram_processor(uart, rounds, r):
+    radix = uart.read(MPROC_BASE + 5)
+    print(f"microprogram processor, fixed_mult_add at radix {radix}")
+
+    values = [r.random.getrandbits(32) for _ in range(128)]
+    for k, v in enumerate(values):
+        uart.write(MPROC_RAM + k, v)
+    wrong = sum(uart.read(MPROC_RAM + k) != v for k, v in enumerate(values))
+    r.check("128 random words through the data ram", wrong == 0, f"{wrong} wrong")
+
+    edges = [0, 1, -1, 1 << radix, -(1 << radix), 0x7FFFFFFF, -0x80000000]
+    wrong, runs = [], []
+    for n in range(max(20, rounds // 25)):
+        m = {k: r.random.choice(edges) if n % 4 == 0 else wrap(r.random.getrandbits(32), 32)
+             for k in range(64, 88)}
+        for k, v in m.items():
+            uart.write(MPROC_RAM + k, v & 0xFFFFFFFF)
+        runs.append(run_program(uart, 0))
+        got = [wrap(uart.read(MPROC_RAM + k), 32) for k in range(1, 9)]
+        expected = mproc_ops_model(m, radix)
+        wrong += [f"address {k + 1} {g} expected {e}" for k, (g, e) in enumerate(zip(got, expected)) if g != e]
+    r.check(f"{len(runs)} runs of the 7 multiply-add commands and the accumulator", not wrong, ", ".join(wrong[:3]))
+    r.check("program 0 ready once in 16 clock edges", all(run == (1, 16) for run in runs),
+            f"ready pulses, clock edges {sorted(set(runs))}")
+
+    wrong, runs = [], []
+    for _ in range(10):
+        y, u, g = (wrap(r.random.getrandbits(32) >> 6, 32) for _ in range(3))
+        for k, v in ((96, y), (97, u), (98, g)):
+            uart.write(MPROC_RAM + k, v & 0xFFFFFFFF)
+        runs.append(run_program(uart, 32))
+        got, expected = wrap(uart.read(MPROC_RAM + 96), 32), mproc_filter_model(y, u, g, radix)
+        if got != expected:
+            wrong.append(f"y {y} u {u} g {g} -> {got} expected {expected}")
+    r.check("10 runs of a 100 round low pass filter loop", not wrong, ", ".join(wrong[:2]))
+    r.check("program 32 ready once in 2007 clock edges", all(run == (1, 2007) for run in runs),
+            f"ready pulses, clock edges {sorted(set(runs))}")
 
 
 def main():
