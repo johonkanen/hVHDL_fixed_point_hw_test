@@ -65,7 +65,8 @@
 --              generics
 --
 -- hVHDL_microprogam_processor's microprogram_controller with
--- instruction(fixed_mult_add), 32 bit data at radix 20 :
+-- instruction(fixed_mult_add) on a fixed_dsp with the same pre-add option,
+-- 32 bit data at radix 20 :
 --
 --   128..133 : see mproc_test.vhd
 --   256..383 : its data ram
@@ -518,7 +519,8 @@ begin
 
 ------------------------------------------------------------------------
     u_mproc_test : entity work.mproc_test
-    generic map (g_base_address => 128, g_ram_base_address => 256)
+    generic map (g_base_address => 128, g_ram_base_address => 256
+        ,g_pre_add_register => g_dsp_pre_add_register)
     port map (
         clock    => clock
         ,reset   => system_reset

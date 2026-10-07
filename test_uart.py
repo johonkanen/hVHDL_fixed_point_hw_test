@@ -778,30 +778,32 @@ MPROC_RAM = 256
 
 
 def mult_add_model(a, b, c, radix):
-    """bit exact model of fixed_mult_add : bits radix + 31 downto radix of
-    a * b + c * 2**radix, the operands signed 32 bit"""
+    """bit exact model of fixed_mult_add on fixed_dsp : bits radix + 31
+    downto radix of a * b + c * 2**radix, the operands signed 32 bit ; a
+    sum, difference or -x in fixed_dsp's pre-adder wraps to 32 bits, c is
+    added or subtracted at the product's width"""
     return wrap((a * b + (c << radix)) >> radix, 32)
 
 
 def mproc_ops_model(m, radix):
     """mproc_test.vhd's program 0 from the data ram words m[64..87], the
-    results for addresses 1..8 ; not x = -x - 1"""
+    results for addresses 1..8"""
     def ma(a, b, c):
         return mult_add_model(a, b, c, radix)
     return [ma(m[64], m[65], m[66]),
-            ma(m[67], m[68], ~m[69]),
-            ma(~m[70], m[71], m[72]),
-            ma(~m[73], m[74], ~m[75]),
+            ma(m[67], m[68], -m[69]),
+            ma(wrap(-m[70], 32), m[71], m[72]),
+            ma(wrap(-m[73], 32), m[74], -m[75]),
             ma(wrap(m[76] + m[77], 32), m[78], 0),
-            ma(wrap(m[79] + ~m[80], 32), m[81], 0),
-            ma(wrap(m[82] + ~m[83], 32), m[84], m[83]),
+            ma(wrap(m[79] - m[80], 32), m[81], 0),
+            ma(wrap(m[82] - m[83], 32), m[84], m[83]),
             wrap(m[85] + m[86] + m[87], 32)]
 
 
 def mproc_filter_model(y, u, g, radix, rounds=100):
-    """program 32 : rounds of lp_filter y <- (u + not y) * g + y"""
+    """program 32 : rounds of lp_filter y <- (u - y) * g + y"""
     for _ in range(rounds):
-        y = mult_add_model(wrap(u + ~y, 32), g, y, radix)
+        y = mult_add_model(wrap(u - y, 32), g, y, radix)
     return y
 
 

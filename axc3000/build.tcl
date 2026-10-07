@@ -63,7 +63,6 @@ set_global_assignment -name VHDL_FILE $fixed_dir/sqrt_calculator/sqrt_calculator
 set_global_assignment -name VHDL_FILE $fixed_dir/fixed_point_scaling/fixed_point_scaling_pkg.vhd
 set_global_assignment -name VHDL_FILE $fixed_dir/lut_divider/lut_divider.vhd
 set_global_assignment -name VHDL_FILE $fixed_dir/full_range_sqrt/full_range_sqrt.vhd
-set_global_assignment -name VHDL_FILE $fixed_dir/real_to_fixed/real_to_fixed_pkg.vhd
 set_global_assignment -name VHDL_FILE $fixed_dir/submodules/hVHDL_memory_library/vhdl2008/mpram_w_configurable_records.vhd
 set_global_assignment -name VHDL_FILE $mproc_dir/vhdl2008_microinstruction_pkg.vhd
 set_global_assignment -name VHDL_FILE $mproc_dir/def_microinstruction_pkg.vhd

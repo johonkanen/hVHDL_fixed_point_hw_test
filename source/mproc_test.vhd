@@ -22,18 +22,19 @@
 --
 --   0  : one of each fixed_mult_add command, operands from 64..87
 --        mpy_add       1 <- 64 * 65 + 66
---        mpy_sub       2 <- 67 * 68 + not 69
---        neg_mpy_add   3 <- not 70 * 71 + 72
---        neg_mpy_sub   4 <- not 73 * 74 + not 75
+--        mpy_sub       2 <- 67 * 68 - 69
+--        neg_mpy_add   3 <- -70 * 71 + 72
+--        neg_mpy_sub   4 <- -73 * 74 - 75
 --        a_add_b_mpy_c 5 <- (76 + 77) * 78
---        a_sub_b_mpy_c 6 <- (79 + not 80) * 81
---        lp_filter     7 <- (82 + not 83) * 84 + 83
+--        a_sub_b_mpy_c 6 <- (79 - 80) * 81
+--        lp_filter     7 <- (82 - 83) * 84 + 83
 --        acc 85, acc 86, get_acc_and_zero 8 <- 85 + 86 + 87
---   32 : set_rpt 99, then lp_filter 96 <- (97 + not 96) * 98 + 96 in a
+--   32 : set_rpt 99, then lp_filter 96 <- (97 - 96) * 98 + 96 in a
 --        loop closed by jump, 100 times
 --
--- a product a * b + c * 2**radix is taken from bits radix + 31 downto
--- radix of the 64 bit result. not x is -x - 1. The sequencer reports
+-- fixed_mult_add runs on fixed_dsp : the sums, differences and -x wrap
+-- to 32 bits in its pre-adder, a product a * b +- c * 2**radix is taken
+-- from bits radix + 31 downto radix of the 64 bit result. The sequencer reports
 -- ready when it reads program_end, a few clocks before the last result is
 -- in the data ram. The three instructions after a jump are already
 -- fetched when it is taken and run every round, a program_end there
@@ -50,6 +51,7 @@ entity mproc_test is
         g_base_address      : natural
         ;g_ram_base_address : natural
         ;g_radix            : natural := 20
+        ;g_pre_add_register : boolean := false -- fixed_dsp's
     );
     port (
         clock    : in std_logic
@@ -192,7 +194,7 @@ begin
     );
 
     u_fixed_mult_add : entity work.instruction(fixed_mult_add)
-    generic map (radix => g_radix)
+    generic map (radix => g_radix, g_pre_add_register => g_pre_add_register)
     port map (
         clock            => clock
         ,instruction_in  => instr_in

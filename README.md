@@ -214,8 +214,8 @@ edge cases, a 1000-request accumulate burst, the accumulator reset, and random
 operands with every flag combination and bursts of up to 300.
 
 The microprogram processor: `hVHDL_microprogam_processor`'s
-`microprogram_controller` with `instruction(fixed_mult_add)`, 32-bit data at
-radix 20, through `source/mproc_test.vhd`, registers from 128. The programs
+`microprogram_controller` with `instruction(fixed_mult_add)` on a `fixed_dsp`
+(with the core's pre-adder register option), 32-bit data at radix 20, through `source/mproc_test.vhd`, registers from 128. The programs
 are in the program RAM, the operands and results in the 128-word data RAM:
 
 | addr     | contents                                                         |    |
@@ -231,10 +231,12 @@ are in the program RAM, the operands and results in the 128-word data RAM:
 | program | contents |
 |--------:|----------|
 | 0  | one of each multiply-add command (`mpy_add`, `mpy_sub`, `neg_mpy_add`, `neg_mpy_sub`, `a_add_b_mpy_c`, `a_sub_b_mpy_c`, `lp_filter`) on operands at 64..84 into 1..7, and `acc`, `acc`, `get_acc_and_zero` of 85..87 into 8; 16 clock edges |
-| 32 | `set_rpt 99`, then the low pass filter `lp_filter` y ← (u − y − 1) · g + y on y = 96, u = 97, g = 98 in a `jump` loop, 100 rounds; 2007 clock edges |
+| 32 | `set_rpt 99`, then the low pass filter `lp_filter` y ← (u − y) · g + y on y = 96, u = 97, g = 98 in a `jump` loop, 100 rounds; 2007 clock edges |
 
-`fixed_mult_add` gives bits radix + 31 … radix of a · b + c · 2^radix, and
-its "negations" are bitwise `not` (−x − 1). `test_uart.py` checks both
+`fixed_mult_add` gives bits radix + 31 … radix of a · b ± c · 2^radix; the
+sums, differences and −a wrap to 32 bits in `fixed_dsp`'s pre-adder. The
+pre-adder register adds a clock before a result is in the data RAM, not to
+the run times. `test_uart.py` checks both
 programs bit for bit against a model, with random and edge-case operands,
 and their run times. A `jump` takes effect after the next three
 instructions, which are already fetched; a `program_end` among them ends
@@ -267,10 +269,10 @@ the program.
 
   | board | clock | RAM output register | DSP request registers | calculators | divider / √ | setup slack |
   |---|---|---|---|---|---|---|
-  | Ti60 EVM | 120 MHz | off | off | 4 | 10 | +3.38 ns |
-  | Alchitry Au+ (pre-adder registered) | 120 MHz | off | off | 5 | 12 | +0.42 ns |
-  | AXC3000 | 120 MHz | on | off | 5 | 11 | +0.88 ns |
-  | Trion T120 (pre-adder registered) | 60 MHz | on | on | 7 | 15 | +5.84 ns (Fmax 92.3 MHz) |
+  | Ti60 EVM | 120 MHz | off | off | 4 | 10 | +3.21 ns |
+  | Alchitry Au+ (pre-adder registered) | 120 MHz | off | off | 5 | 12 | +0.37 ns |
+  | AXC3000 | 120 MHz | on | off | 5 | 11 | +1.03 ns |
+  | Trion T120 (pre-adder registered) | 60 MHz | on | on | 7 | 15 | +6.37 ns (Fmax 97.1 MHz) |
 
   On the AXC3000 the M20K read register straight into a DSP misses 120 MHz
   by 0.41 ns, so it keeps the RAM output register. The Trion starts with

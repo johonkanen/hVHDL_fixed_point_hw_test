@@ -22,7 +22,6 @@
         <efx:design_file name="../source/hVHDL_fixed_point/fixed_point_scaling/fixed_point_scaling_pkg.vhd" version="default" library="default" />
         <efx:design_file name="../source/hVHDL_fixed_point/lut_divider/lut_divider.vhd" version="default" library="default" />
         <efx:design_file name="../source/hVHDL_fixed_point/full_range_sqrt/full_range_sqrt.vhd" version="default" library="default" />
-        <efx:design_file name="../source/hVHDL_fixed_point/real_to_fixed/real_to_fixed_pkg.vhd" version="default" library="default" />
         <efx:design_file name="../source/hVHDL_fixed_point/submodules/hVHDL_memory_library/vhdl2008/mpram_w_configurable_records.vhd" version="default" library="default" />
         <efx:design_file name="../source/hVHDL_microprogam_processor/vhdl2008/vhdl2008_microinstruction_pkg.vhd" version="default" library="default" />
         <efx:design_file name="../source/hVHDL_microprogam_processor/vhdl2008/def_microinstruction_pkg.vhd" version="default" library="default" />
