@@ -231,17 +231,20 @@ are in the program RAM, the operands and results in the 128-word data RAM:
 | 135      | clock edges from one background run to the next (default 1000)   | RW |
 | 136      | background runs since bit 0 of 134 was last set                  | RO |
 | 137, 138 | data word width, instruction width (32, 32)                      | RO |
+| 139      | data RAM words, as far as the address fields reach (128)         | RO |
 | 256..383 | data RAM: writes go to the processor's RAM, reads come from a copy kept from its RAM writes | RW |
 | 384..511 | the data RAM words' bits above 31 (none at 32 bits)              | RW |
 
 A second instance has 36-bit data and 36-bit instructions at radix 24, the
-same programs and registers from 144 (144..154), its data RAM's bits 31..0
-at 512..639 and bits 35..32 at 640..767. A read from the high window gives
-a word's bits above 31 sign extended; a write there sets the bits above 31
-of the next word written to the low window, so a 36-bit word is written
-high part first. The instructions keep their fields in bits 31..0 and the
-programs are 32-bit instructions zero extended; the data path, `fixed_dsp`
-36×36 bits and the models in `test_uart.py` follow the width.
+same programs and registers from 144 (144..155). Its instructions have 8-bit
+address fields, so its data RAM is 256 words: bits 31..0 at 512..767 and
+bits 35..32 at 768..1023. A read from the high window gives a word's bits
+above 31 sign extended; a write there sets the bits above 31 of the next
+word written to the low window, so a 36-bit word is written high part
+first. Its program 192 uses operands and results above 127, which 7-bit
+fields cannot reach. The programs are written once with `mi()` and encoded
+for each instance's width; the data path, `fixed_dsp` 36×36 bits and the
+models in `test_uart.py` follow the data width.
 
 | program | contents |
 |--------:|----------|
@@ -314,10 +317,10 @@ the program.
 
   | board | clock | RAM output register | DSP request registers | calculators | divider / √ | setup slack |
   |---|---|---|---|---|---|---|
-  | Ti60 EVM | 120 MHz | off | off | 4 | 10 | +2.85 ns |
-  | Alchitry Au+ (pre-adder and product registered) | 120 MHz | off | off | 6 | 14 | +0.65 ns |
-  | AXC3000 | 120 MHz | on | off | 5 | 11 | +0.44 ns |
-  | Trion T120 (pre-adder registered) | 60 MHz | on | on | 7 | 15 | +6.50 ns (Fmax 98.3 MHz) |
+  | Ti60 EVM | 120 MHz | off | off | 4 | 10 | +3.22 ns |
+  | Alchitry Au+ (pre-adder and product registered) | 120 MHz | off | off | 6 | 14 | +0.46 ns |
+  | AXC3000 | 120 MHz | on | off | 5 | 11 | +0.24 ns |
+  | Trion T120 (pre-adder registered) | 60 MHz | on | on | 7 | 15 | +6.35 ns (Fmax 97.0 MHz) |
 
   On the AXC3000 the M20K read register straight into a DSP misses 120 MHz
   by 0.41 ns, so it keeps the RAM output register. The Trion starts with

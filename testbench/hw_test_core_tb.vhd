@@ -404,7 +404,7 @@ begin
         -- the 36 bit processor : data through the high and low windows
         constant mproc36_base      : natural := 144;
         constant mproc36_ram       : natural := 512;
-        constant mproc36_ram_high  : natural := 640;
+        constant mproc36_ram_high  : natural := 768;
         constant mproc36_radix     : natural := 24;
         subtype word36 is signed(35 downto 0);
 
@@ -639,6 +639,8 @@ begin
         check_register(mproc36_base + 5, mproc36_radix);
         check_register(mproc36_base + 9, 36);
         check_register(mproc36_base + 10, 36);
+        check_register(mproc36_base + 11, 256);
+        check_register(mproc_base + 11, 128);
         x := x"0badcafe";
         for k in 64 to 87 loop
             x := galois_step(x);
@@ -665,6 +667,22 @@ begin
         check_word36(6, mult_add36(operands36(79) - operands36(80), operands36(81), (others => '0')));
         check_word36(7, mult_add36(operands36(82) - operands36(83), operands36(84), operands36(83)));
         check_word36(8, operands36(85) + operands36(86) + operands36(87));
+
+        -- program 192 : 8 bit address fields reach operands above 127
+        for k in 200 to 205 loop
+            x := galois_step(x);
+            y := galois_step(x);
+            write_word36(k, signed(y(3 downto 0)) & signed(x));
+            operands36(64 + k - 200) := signed(y(3 downto 0)) & signed(x);
+        end loop;
+        write_register(mproc36_base, 192);
+        write_register(mproc36_base + 1, 1);
+        for k in 1 to 20 loop
+            read_register(mproc36_base + 2, data1);
+            exit when data1 = x"00000000";
+        end loop;
+        check_word36(250, mult_add36(operands36(64), operands36(65), operands36(66)));
+        check_word36(251, mult_add36(operands36(67), operands36(68), operands36(69), subtract => true));
 
         info("boost converter after " & integer'image(to_integer(unsigned(data1))) & " background steps : i "
             & real'image(real(to_integer(signed(i_state))) / 2.0**mproc_radix) & " u "

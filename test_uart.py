@@ -67,11 +67,12 @@ Register map (source/hw_test_core.vhd) :
     133 radix                                                        RO
     134 bit 0 : boost converter model (program 128) in the background RW
     135 clock edges between background runs   136 background runs   RW/RO
-    137 data word width   138 instruction width                     RO
+    137 data word width   138 instruction width   139 data ram words  RO
     384..511 the data ram's bits above 31 (none at 32 bits)          RW
 
-    the same with 36 bit data and instructions at radix 24 :
-    144..154 registers   512..639 data ram bits 31..0   640..767 bits 35..32
+    the same with 36 bit data and instructions (8 bit address fields,
+    a 256 word data ram) at radix 24 :
+    144..155 registers   512..767 data ram bits 31..0   768..1023 bits 35..32
     256..383 data ram : write -> the ram, read <- a copy of it       RW
     base +0 input   +1 write -> one request   +2 result               RW/WO/RO
          +3 latency, request at the input to ready, clock edges     RO
@@ -782,7 +783,7 @@ def run_full_range_sqrt(uart, rounds, r):
 
 
 MPROCS = {"32 bit": dict(base=128, ram=256, ram_high=384),
-          "36 bit": dict(base=144, ram=512, ram_high=640)}
+          "36 bit": dict(base=144, ram=512, ram_high=768)}
 
 
 def mult_add_model(a, b, c, radix, w=32):
@@ -839,6 +840,7 @@ class Mproc:
         self.uart, self.base, self.ram, self.ram_high = uart, base, ram, ram_high
         self.radix = uart.read(base + 5)
         self.w = uart.read(base + 9)
+        self.ram_size = uart.read(base + 11)
 
     def write(self, address, value):
         if self.w > 32:
@@ -878,11 +880,11 @@ def run_mproc(mp, rounds, r):
           f"fixed_mult_add at radix {radix}")
     mp.uart.write(mp.base + 6, 0)
 
-    values = [wrap(r.random.getrandbits(w), w) for _ in range(128)]
+    values = [wrap(r.random.getrandbits(w), w) for _ in range(mp.ram_size)]
     for k, v in enumerate(values):
         mp.write(k, v)
     wrong = sum(mp.read(k) != v for k, v in enumerate(values))
-    r.check(f"128 random {w} bit words through the data ram", wrong == 0, f"{wrong} wrong")
+    r.check(f"{mp.ram_size} random {w} bit words through the data ram", wrong == 0, f"{wrong} wrong")
 
     edges = [0, 1, -1, 1 << radix, -(1 << radix), (1 << (w - 1)) - 1, -(1 << (w - 1))]
     wrong, runs = [], []
@@ -911,6 +913,20 @@ def run_mproc(mp, rounds, r):
     r.check("10 runs of a 100 round low pass filter loop", not wrong, ", ".join(wrong[:2]))
     r.check("program 32 ready once in 2007 clock edges", all(run == (1, 2007) for run in runs),
             f"ready pulses, clock edges {sorted(set(runs))}")
+
+    if mp.ram_size > 128:
+        wrong = []
+        for _ in range(10):
+            m = {k: wrap(r.random.getrandbits(w), w) for k in range(200, 206)}
+            for k, v in m.items():
+                mp.write(k, v)
+            mp.run(192)
+            expected = [mult_add_model(m[200], m[201], m[202], radix, w),
+                        mult_add_model(m[203], m[204], -m[205], radix, w)]
+            got = [mp.read(250), mp.read(251)]
+            if got != expected:
+                wrong.append(f"{got} expected {expected}")
+        r.check(f"10 runs of program 192, operands and results above 127", not wrong, ", ".join(wrong[:2]))
 
     run_boost_converter(mp, r)
 

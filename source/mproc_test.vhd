@@ -17,19 +17,21 @@
 --   +8 : background runs since bit 0 of +6 was last set           RO
 --   +9 : data word width (g_word_length)                          RO
 --   +10: instruction width (g_instruction_length)                 RO
+--   +11: data ram words, as far as the instructions' address fields
+--        reach : 128 for 32 bit instructions, 256 for 36           RO
 --
--- the data ram, 128 words of g_word_length bits, from
--- g_ram_base_address, bits 31..0 :
+-- the data ram, of g_word_length bits, from g_ram_base_address, bits
+-- 31..0 :
 --
---   +0..+127 : write -> data ram, read <- a copy of the data ram
---              kept from the processor's ram writes               RW
+--   +0..   : write -> data ram, read <- a copy of the data ram
+--            kept from the processor's ram writes                 RW
 --
 -- and from g_ram_high_base_address the bits above 31, sign extended,
 -- for a word length over 32 :
 --
---   +0..+127 : read <- bits word length - 1 downto 32 of the word   RW
---              write -> the bits above 31 of the next word written
---              from g_ram_base_address (any address)
+--   +0..   : read <- bits word length - 1 downto 32 of the word     RW
+--            write -> the bits above 31 of the next word written
+--            from g_ram_base_address (any address)
 --
 -- the programs are in the program ram, the operands and the results in
 -- the data ram :
@@ -45,6 +47,9 @@
 --        acc 85, acc 86, get_acc_and_zero 8 <- 85 + 86 + 87
 --   32 : set_rpt 99, then lp_filter 96 <- (97 - 96) * 98 + 96 in a
 --        loop closed by jump, 100 times
+--   192: with 8 bit address fields or more, operands and results
+--        above 127 : mpy_add 250 <- 200 * 201 + 202,
+--        mpy_sub 251 <- 203 * 204 - 205
 --   128: one time step of an averaged boost converter (the
 --        ac_in_ac_out_lab_power_supply test_processor v3 model), the
 --        inductor current i and capacitor voltage u from the input
@@ -82,7 +87,7 @@ entity mproc_test is
         ;g_ram_base_address : natural
         ;g_ram_high_base_address : natural
         ;g_word_length        : natural := 32 -- 32..64
-        ;g_instruction_length : natural := 32 -- 32 and up, the fields are in bits 31..0
+        ;g_instruction_length : natural := 32 -- 32 and up, see generic_microinstruction_pkg
         ;g_radix            : natural := 20
         ;g_pre_add_register : boolean := false -- fixed_dsp's
         ;g_product_register : boolean := false -- fixed_dsp's
@@ -104,7 +109,8 @@ architecture rtl of mproc_test is
 
     constant word_length        : natural := g_word_length;
     constant instruction_length : natural := g_instruction_length;
-    constant ram_size           : natural := 128;
+    -- the data ram as far as the address fields reach
+    constant ram_size           : natural := 2**address_bits(instruction_length);
 
     constant ref_subtype : subtype_ref_record :=
         create_ref_subtypes(readports => 3, datawidth => word_length, addresswidth => 10);
@@ -140,46 +146,46 @@ architecture rtl of mproc_test is
         ,u       => to_fixed(12.0)
         ,others  => (others => '0'));
 
-    -- results depend on operands written at least 16 instructions before ;
-    -- 32 bit instructions, widened to the instruction length below
-    constant program_32 : work.dual_port_ram_pkg.ram_array(0 to instr_ref_subtype.address_high)(31 downto 0) := (
-        0   => op(mpy_add          , 1 , 64 , 65 , 66)
-        , 1 => op(mpy_sub          , 2 , 67 , 68 , 69)
-        , 2 => op(neg_mpy_add      , 3 , 70 , 71 , 72)
-        , 3 => op(neg_mpy_sub      , 4 , 73 , 74 , 75)
-        , 4 => op(a_add_b_mpy_c    , 5 , 76 , 77 , 78)
-        , 5 => op(a_sub_b_mpy_c    , 6 , 79 , 80 , 81)
-        , 6 => op(lp_filter        , 7 , 82 , 83 , 84)
-        , 7 => op(acc              , 0 , 0  , 0  , 85)
-        , 8 => op(acc              , 0 , 0  , 0  , 86)
-        , 9 => op(get_acc_and_zero , 8 , 0  , 0  , 87)
-        , 10 => op(program_end)
-
-        , 32 => op(set_rpt   , 99)
-        , 33 => op(lp_filter , 96 , 97 , 96 , 98)
-        , 49 => op(jump      , 33)
-        , 53 => op(program_end)
-
-        , boost_converter      => op(neg_mpy_add , vl , duty   , u      , vin)
-        , boost_converter + 1  => op(mpy_sub     , ic , duty   , i      , load)
-        , boost_converter + 13 => op(neg_mpy_add , vl , r      , i      , vl)
-        , boost_converter + 14 => op(mpy_add     , u  , ic     , u_gain , u)
-        , boost_converter + 28 => op(mpy_add     , i  , vl     , i_gain , i)
-        , boost_converter + 30 => op(program_end)
-
-        , others => op(nop));
-
-    function widen (program : work.dual_port_ram_pkg.ram_array) return work.dual_port_ram_pkg.ram_array is
-        variable retval : work.dual_port_ram_pkg.ram_array(program'range)(instr_ref_subtype.data'range);
+    -- results depend on operands written at least 16 instructions before
+    function make_program return microprogram is
+        variable retval : microprogram(0 to instr_ref_subtype.address_high) := (others => mi(nop));
     begin
-        for k in program'range loop
-            retval(k) := resize_instruction(program(k), instruction_length);
-        end loop;
+        retval := (
+        0   => mi(mpy_add          , 1 , 64 , 65 , 66)
+        , 1 => mi(mpy_sub          , 2 , 67 , 68 , 69)
+        , 2 => mi(neg_mpy_add      , 3 , 70 , 71 , 72)
+        , 3 => mi(neg_mpy_sub      , 4 , 73 , 74 , 75)
+        , 4 => mi(a_add_b_mpy_c    , 5 , 76 , 77 , 78)
+        , 5 => mi(a_sub_b_mpy_c    , 6 , 79 , 80 , 81)
+        , 6 => mi(lp_filter        , 7 , 82 , 83 , 84)
+        , 7 => mi(acc              , 0 , 0  , 0  , 85)
+        , 8 => mi(acc              , 0 , 0  , 0  , 86)
+        , 9 => mi(get_acc_and_zero , 8 , 0  , 0  , 87)
+        , 10 => mi(program_end)
+
+        , 32 => mi(set_rpt   , 99)
+        , 33 => mi(lp_filter , 96 , 97 , 96 , 98)
+        , 49 => mi(jump      , 33)
+        , 53 => mi(program_end)
+
+        , boost_converter      => mi(neg_mpy_add , vl , duty   , u      , vin)
+        , boost_converter + 1  => mi(mpy_sub     , ic , duty   , i      , load)
+        , boost_converter + 13 => mi(neg_mpy_add , vl , r      , i      , vl)
+        , boost_converter + 14 => mi(mpy_add     , u  , ic     , u_gain , u)
+        , boost_converter + 28 => mi(mpy_add     , i  , vl     , i_gain , i)
+        , boost_converter + 30 => mi(program_end)
+
+        , others => mi(nop));
+        if address_bits(instruction_length) >= 8 then
+            retval(192) := mi(mpy_add , 250 , 200 , 201 , 202);
+            retval(193) := mi(mpy_sub , 251 , 203 , 204 , 205);
+            retval(196) := mi(program_end);
+        end if;
         return retval;
-    end widen;
+    end make_program;
 
     constant test_program : work.dual_port_ram_pkg.ram_array(0 to instr_ref_subtype.address_high)(instr_ref_subtype.data'range)
-        := widen(program_32);
+        := encode(make_program, instruction_length);
 
     signal mproc_in  : microprogram_processor_in_record;
     signal mproc_out : microprogram_processor_out_record;
@@ -190,7 +196,7 @@ architecture rtl of mproc_test is
     constant unit_in_ref : execution_unit_in_record := (
         instr_ram_read_out => instr_ref_subtype.ram_read_out
         ,data_read_out     => ref_subtype.ram_read_out
-        ,instr_pipeline    => (0 to 12 => resize_instruction(op(nop), instruction_length))
+        ,instr_pipeline    => (0 to 12 => encode(mi(nop), instruction_length))
     );
     constant unit_out_ref : execution_unit_out_record := (
         data_read_in  => ref_subtype.ram_read_in
@@ -265,6 +271,7 @@ begin
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 8, std_logic_vector(background_runs));
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 9, std_logic_vector(to_unsigned(word_length, 32)));
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 10, std_logic_vector(to_unsigned(instruction_length, 32)));
+            connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 11, std_logic_vector(to_unsigned(ram_size, 32)));
 
             if write_is_requested_to_address(bus_in, g_base_address + 1) then
                 calculate(mproc_in, to_integer(unsigned(start_address(9 downto 0))));

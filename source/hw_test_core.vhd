@@ -71,13 +71,14 @@
 -- execution_unit(fixed_mult_add) on a fixed_dsp with the same pre-add option,
 -- 32 bit data at radix 20 :
 --
---   128..138 : see mproc_test.vhd
---   256..383 : its data ram, 384..511 the bits above 31 (none)
+--   128..139 : see mproc_test.vhd
+--   256..383 : its 128 word data ram, 384..511 the bits above 31 (none)
 --
--- a second one with 36 bit data and instructions at radix 24 :
+-- a second one with 36 bit data and instructions (8 bit address fields)
+-- at radix 24 :
 --
---   144..154 : see mproc_test.vhd
---   512..639 : its data ram bits 31..0, 640..767 bits 35..32
+--   144..155  : see mproc_test.vhd
+--   512..767  : its 256 word data ram's bits 31..0, 768..1023 bits 35..32
 --
 -- fixed_dsp recomputes its result register on every clock, the core drives
 -- init_fixed_dsp while idle so an accumulate only carries across back to
@@ -545,7 +546,7 @@ begin
     );
 
     u_mproc36_test : entity work.mproc_test
-    generic map (g_base_address => 144, g_ram_base_address => 512, g_ram_high_base_address => 640
+    generic map (g_base_address => 144, g_ram_base_address => 512, g_ram_high_base_address => 768
         ,g_word_length => 36, g_instruction_length => 36, g_radix => 24
         ,g_pre_add_register => g_dsp_pre_add_register
         ,g_product_register => g_dsp_product_register)
