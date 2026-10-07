@@ -86,7 +86,10 @@ except ImportError:
 BOARDS = {
     "au":      dict(board_id=1, clock_hz=120_000_000, baud=5_000_000, vid=0x0403, pid=0x6010, interface=1,
                     not_product=["Trion", "Titanium"]),
-    "axc3000": dict(board_id=2, clock_hz=120_000_000, baud=4_800_000, vid=0x09FB, pid=0x6022, interface=1),
+    # by its blaster's serial number : other USB Blaster IIIs (an Agilex 5
+    # board) have the same ids
+    "axc3000": dict(board_id=2, clock_hz=120_000_000, baud=4_800_000, vid=0x09FB, pid=0x6022, interface=1,
+                    serial="TEA45543"),
     "ti60evm": dict(board_id=3, clock_hz=120_000_000, baud=4_800_000, vid=0x0403, pid=0x6011, interface=2,
                     product="Ti60F225"),
     # no uart on the trion board : spi from its FT2232H channel A, chosen by
@@ -183,6 +186,7 @@ def find_port(board):
         if p.vid == board["vid"] and p.pid == board["pid"] and p.location \
                 and p.location.endswith(f".{board['interface']}") \
                 and board.get("product", "") in description \
+                and board.get("serial", p.serial_number) == p.serial_number \
                 and not any(x in description for x in board.get("not_product", [])):
             candidates.append(p)
     if len(candidates) > 1:

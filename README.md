@@ -219,6 +219,12 @@ operands with every flag combination and bursts of up to 300.
   checks for the EVM's FT4232H first; `trion/build.sh program` calls
   `efx_pgm.ftdi_program` with the Trion's FT2232H URL
   (`ftdi://0x0403:0x6010:FT56NF97/2`, `TRION_SERIAL` overrides the serial).
+* **The AXC3000 is found by its USB Blaster III's serial number** (TEA45543,
+  `AXC3000_SERIAL` overrides it). Other boards with a USB Blaster III, e.g. an
+  Agilex 5 board, have the same VID:PID. `axc3000/program.sh` uses the
+  `jtagconfig` cable on that USB port, checks that its chain holds the Agilex 3
+  (A3C), and detaches `ftdi_sio` from that blaster's JTAG interface only.
+  `test_uart.py --board axc3000` matches the serial as well.
 * **Lookup table latency per board.** `g_ram_output_register` (`dual_port_ram`'s
   `g_output_register`) and `g_dsp_request_register` each take a clock off the
   calculators; the request register also comes off the divider's and square
