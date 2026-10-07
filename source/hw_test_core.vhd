@@ -75,7 +75,7 @@
 --   256..383 : its 128 word data ram, 384..511 the bits above 31 (none)
 --
 -- a second one with 36 bit data and instructions (8 bit address fields)
--- at radix 24, with a math unit (division) :
+-- at radix 24, with a math unit (division, square root) :
 --
 --   144..158  : see mproc_test.vhd
 --   512..767  : its 256 word data ram's bits 31..0, 768..1023 bits 35..32

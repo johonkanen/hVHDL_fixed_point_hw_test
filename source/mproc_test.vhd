@@ -61,6 +61,7 @@
 --        mpy_sub 251 <- 203 * 204 - 205, 4 + S + L clocks
 --   224: with the math unit, 112 <- 110 / 111, then
 --        113 <- 112 * 114 + 115 and 116 <- 113 / 111
+--   288: with the math unit, 118 <- sqrt(117), then 119 <- 117 / 118
 --   128: one time step of an averaged boost converter, 3 + S + 3 * L clocks (the
 --        ac_in_ac_out_lab_power_supply test_processor v3 model), the
 --        inductor current i and capacitor voltage u from the input
@@ -105,7 +106,7 @@ entity mproc_test is
         -- the processor's rams' output registers, microprogram_core's
         ;g_program_ram_output_register : boolean := true
         ;g_data_ram_output_register    : boolean := true
-        -- a fixed_math unit (division) beside fixed_mult_add, and its
+        -- a fixed_math unit (division, square root) beside fixed_mult_add, and its
         -- divider's shifter stages
         ;g_math_unit : boolean := false
         ;g_divider_shifter_stages : positive := 2
@@ -183,6 +184,10 @@ architecture rtl of mproc_test is
         ,mi(mpy_add, 113, 112, 114, 115)
         ,mi_div(116, 113, 111));
 
+    constant square_roots : microprogram := (
+         mi_sqrt(118, 117)
+        ,mi_div(119, 117, 118));
+
     constant high_addresses : microprogram := (
          mi(mpy_add , 250 , 200 , 201 , 202)
         ,mi(mpy_sub , 251 , 203 , 204 , 205));
@@ -198,6 +203,7 @@ architecture rtl of mproc_test is
         end if;
         if g_math_unit then
             retval := place(retval, 224, schedule(config, divisions) & mi(program_end));
+            retval := place(retval, 288, schedule(config, square_roots) & mi(program_end));
         end if;
         return retval;
     end make_program;

@@ -717,6 +717,21 @@ begin
         check_word36(116, lut_divide(product36, to_signed(-3 * 2**22, 36), mproc36_radix
             , divider_point_lut, divider_slope_lut, divider_table_radix, divider_x_frac_width));
 
+        -- program 288 : 118 <- sqrt(117), 119 <- 117 / 118
+        write_word36(117, signed(x(3 downto 0)) & signed(y) and x"7ffffffff");
+        write_register(mproc36_base, 288);
+        write_register(mproc36_base + 1, 1);
+        for k in 1 to 20 loop
+            read_register(mproc36_base + 2, data1);
+            exit when data1 = x"00000000";
+        end loop;
+        check_register(mproc36_base + 3, 1);
+        quotient36 := signed(get_full_range_sqrt(unsigned(signed(x(3 downto 0)) & signed(y) and x"7ffffffff"), mproc36_radix
+            , root_point_lut, root_slope_lut, root_table_radix, root_x_frac_width));
+        check_word36(118, quotient36);
+        check_word36(119, lut_divide(signed(x(3 downto 0)) & signed(y) and x"7ffffffff", quotient36, mproc36_radix
+            , divider_point_lut, divider_slope_lut, divider_table_radix, divider_x_frac_width));
+
         info("boost converter after " & integer'image(to_integer(unsigned(data1))) & " background steps : i "
             & real'image(real(to_integer(signed(i_state))) / 2.0**mproc_radix) & " u "
             & real'image(real(to_integer(signed(u_state))) / 2.0**mproc_radix));

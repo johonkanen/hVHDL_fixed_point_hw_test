@@ -77,7 +77,8 @@ Register map (source/hw_test_core.vhd) :
 
     the same with 36 bit data and instructions (8 bit address fields,
     a 256 word data ram) at radix 24 and a math unit (division, program
-    224 : 112 <- 110 / 111, 113 <- 112 * 114 + 115, 116 <- 113 / 111) :
+    224 : 112 <- 110 / 111, 113 <- 112 * 114 + 115, 116 <- 113 / 111,
+    288 : 118 <- sqrt(117), 119 <- 117 / 118) :
     144..158 registers   512..767 data ram bits 31..0   768..1023 bits 35..32
     256..383 data ram : write -> the ram, read <- a copy of it       RW
     base +0 input   +1 write -> one request   +2 result               RW/WO/RO
@@ -952,6 +953,8 @@ def run_mproc(mp, rounds, r):
 
 # the math unit's lut_divider table : 512 x 18 bits at radix 16, 18 bit x_frac
 MATH_TABLE = (9, 18, 16, 18)
+# and its full_range_sqrt table : 512 x 18 bits at radix 17, 18 bit x_frac
+MATH_SQRT_TABLE = (9, 18, 17, 18)
 
 
 def run_math_unit(mp, r):
@@ -981,6 +984,20 @@ def run_math_unit(mp, r):
             wrong.append(f"{n} / {d} : {got} expected {expected}")
     r.check("20 runs of program 224, divisions and a multiply-add between them", not wrong, ", ".join(wrong[:2]))
     r.check("program 224 ready once", all(run[0] == 1 for run in runs), f"ready pulses {sorted(set(run[0] for run in runs))}")
+
+    # program 288 : 118 <- sqrt(117), 119 <- 117 / 118
+    wrong, runs = [], []
+    for _ in range(20):
+        a = r.random.getrandbits(w - 1) >> r.random.randint(0, w - 2)
+        mp.write(117, a)
+        runs.append(mp.run(288))
+        root = full_range_sqrt_model(a, radix, w, MATH_SQRT_TABLE)
+        expected = [root, divide(a, root) if root else 0]
+        got = [wrap(mp.read(118), w) & ((1 << w) - 1), mp.read(119)]
+        if [got[0], got[1]] != [root, expected[1]]:
+            wrong.append(f"sqrt {a} : {got} expected {expected}")
+    r.check("20 runs of program 288, a square root and a division by it", not wrong, ", ".join(wrong[:2]))
+    r.check("program 288 ready once", all(run[0] == 1 for run in runs), f"ready pulses {sorted(set(run[0] for run in runs))}")
 
 
 def run_boost_converter(mp, r):
