@@ -110,6 +110,12 @@ entity hw_test_core is
         -- the 36 bit processor's math unit : its lut_divider's shifter
         -- stages, 2 clocks more each
         ;g_mproc_divider_shifter_stages : positive := 2
+        -- and its own fixed_dsps' pre-adder and product registers, its
+        -- tables' ram output registers and its dsp request registers
+        ;g_mproc_math_pre_add_register     : boolean := false
+        ;g_mproc_math_product_register     : boolean := false
+        ;g_mproc_math_ram_output_register  : boolean := true
+        ;g_mproc_math_dsp_request_register : boolean := true
         -- dual_port_ram's output register in the lookup tables, off takes a
         -- clock off every calculator, the divider and the square root
         ;g_ram_output_register  : boolean := true
@@ -559,6 +565,10 @@ begin
     generic map (g_base_address => 144, g_ram_base_address => 512, g_ram_high_base_address => 768
         ,g_word_length => 36, g_instruction_length => 36, g_radix => 24
         ,g_math_unit => true, g_divider_shifter_stages => g_mproc_divider_shifter_stages
+        ,g_math_pre_add_register     => g_mproc_math_pre_add_register
+        ,g_math_product_register     => g_mproc_math_product_register
+        ,g_math_ram_output_register  => g_mproc_math_ram_output_register
+        ,g_math_dsp_request_register => g_mproc_math_dsp_request_register
         ,g_pre_add_register => g_dsp_pre_add_register
         ,g_product_register => g_dsp_product_register
         ,g_program_ram_output_register => g_mproc_program_ram_output_register

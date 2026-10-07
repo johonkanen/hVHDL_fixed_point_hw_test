@@ -73,6 +73,12 @@ begin
         ,g_dsp_request_register => false        -- the microprogram processors' rams without their output registers
         ,g_mproc_program_ram_output_register => false
         ,g_mproc_data_ram_output_register    => false
+        -- the 36 bit processor's math unit : its fixed_dsps' pre-adder and
+        -- product registers, its tables' ram output and dsp request registers
+        ,g_mproc_math_pre_add_register     => false
+        ,g_mproc_math_product_register     => false
+        ,g_mproc_math_ram_output_register  => true
+        ,g_mproc_math_dsp_request_register => true
         -- the 36 bit divider's first normaliser stage missed 120 MHz by
         -- 0.07 ns with 2 shifter stages
         ,g_mproc_divider_shifter_stages      => 3

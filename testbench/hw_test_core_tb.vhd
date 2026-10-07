@@ -27,6 +27,8 @@ entity hw_test_core_tb is
       ;mproc_program_ram_register : boolean := true
       ;mproc_data_ram_register    : boolean := true
       ;mproc_divider_shifter_stages : positive := 2
+      ;mproc_math_ram_register     : boolean := true
+      ;mproc_math_request_register : boolean := true
       ;ram_output_register : boolean := true
       ;dsp_request_register : boolean := true
       -- the core's lut_divider table (its g_divider_* defaults)
@@ -697,7 +699,8 @@ begin
         -- 113 <- 112 * 114 + 115, 116 <- 113 / 111
         check_register(mproc_base + 14, 0);
         check_register(mproc36_base + 14, work.execution_unit_pkg.fixed_math_result_latency(
-            pre_add_register, product_register, mproc_data_ram_register, mproc_divider_shifter_stages));
+            pre_add_register, product_register, mproc_data_ram_register, mproc_divider_shifter_stages,
+            mproc_math_ram_register, mproc_math_request_register));
         write_word36(110, to_signed(5 * 2**23, 36));       --  2.5 at radix 24
         write_word36(111, to_signed(-3 * 2**22, 36));      -- -0.75
         write_word36(114, signed(x(3 downto 0)) & signed(y));
@@ -816,6 +819,10 @@ begin
         ,g_mproc_program_ram_output_register => mproc_program_ram_register
         ,g_mproc_data_ram_output_register    => mproc_data_ram_register
         ,g_mproc_divider_shifter_stages      => mproc_divider_shifter_stages
+        ,g_mproc_math_pre_add_register       => pre_add_register
+        ,g_mproc_math_product_register       => product_register
+        ,g_mproc_math_ram_output_register    => mproc_math_ram_register
+        ,g_mproc_math_dsp_request_register   => mproc_math_request_register
         ,g_ram_output_register  => ram_output_register
         ,g_dsp_request_register => dsp_request_register
         ,g_divider_index_width       => divider_index_width

@@ -113,6 +113,13 @@ entity mproc_test is
         -- divider's shifter stages
         ;g_math_unit : boolean := false
         ;g_divider_shifter_stages : positive := 2
+        -- the math unit's own registers : its fixed_dsps' pre-adder and
+        -- product registers, its tables' ram output registers and the
+        -- registers on the requests to its fixed_dsps
+        ;g_math_pre_add_register     : boolean := false
+        ;g_math_product_register     : boolean := false
+        ;g_math_ram_output_register  : boolean := true
+        ;g_math_dsp_request_register : boolean := true
     );
     port (
         clock    : in std_logic
@@ -151,8 +158,8 @@ architecture rtl of mproc_test is
     function choose_math_latency return natural is
     begin
         if g_math_unit then
-            return fixed_math_result_latency(g_pre_add_register, g_product_register, g_data_ram_output_register,
-                g_divider_shifter_stages);
+            return fixed_math_result_latency(g_math_pre_add_register, g_math_product_register, g_data_ram_output_register,
+                g_divider_shifter_stages, g_math_ram_output_register, g_math_dsp_request_register);
         end if;
         return 0;
     end choose_math_latency;
@@ -415,8 +422,10 @@ begin
 
     math : if g_math_unit generate
         u_fixed_math : entity work.execution_unit(fixed_math)
-        generic map (g_radix => g_radix, g_pre_add_register => g_pre_add_register, g_product_register => g_product_register
-            ,g_data_ram_output_register => g_data_ram_output_register, g_divider_shifter_stages => g_divider_shifter_stages)
+        generic map (g_radix => g_radix
+            ,g_pre_add_register => g_math_pre_add_register, g_product_register => g_math_product_register
+            ,g_data_ram_output_register => g_data_ram_output_register, g_divider_shifter_stages => g_divider_shifter_stages
+            ,g_math_ram_output_register => g_math_ram_output_register, g_math_dsp_request_register => g_math_dsp_request_register)
         port map (
             clock            => clock
             ,unit_in         => unit_in

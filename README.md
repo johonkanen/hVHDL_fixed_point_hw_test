@@ -253,7 +253,10 @@ processor's `fixed_math` (`lut_divider` and `full_range_sqrt`, each with a
 512 × 18 bit table, and `sine_calculator`'s 16 bit sine) beside
 `fixed_mult_add`, for division, square root, sine and cosine. Its result latency is 18, 1 less without the
 data RAM's output register and 4 more with the pre-adder and product
-registers; the scheduler keeps the two units' writes out of each other's
+registers. Each board sets the math unit's own registers in its top
+(`g_mproc_math_pre_add_register`, `g_mproc_math_product_register`,
+`g_mproc_math_ram_output_register`, `g_mproc_math_dsp_request_register`,
+`g_mproc_divider_shifter_stages`), separately from the multiply-add units'; the scheduler keeps the two units' writes out of each other's
 clock. `test_uart.py` checks programs 224, 288 and 352 bit for bit against
 `lut_divide_model`, `full_range_sqrt_model` and `sine_model` with random
 operands. Its instructions have 8-bit
@@ -348,11 +351,15 @@ the program.
   instruction must read a result after its write clock; the processor's
   `fixed_point_result_latency()` counts that clock (see the processor's
   README).
-* **The AXC3000's math unit divider has 3 shifter stages.** With 2, the
-  36-bit `lut_divider`'s first normaliser stage (absolute value, leading
-  zero count and the first shift in one clock) missed 120 MHz by 0.07 ns.
-  `g_mproc_divider_shifter_stages => 3` takes 2 clocks more (math latency
-  20 instead of 18) for less logic in each stage. `axc3000/build.sh` now
+* **The 36-bit divider's first normaliser stage was the AXC3000's limit.**
+  It did the absolute value, a leading zero count of the whole word and the
+  first shift in one clock, and missed 120 MHz by up to 0.31 ns. Shifter
+  stages split only the shift (the AXC3000 has 3,
+  `g_mproc_divider_shifter_stages`, math latency 2 more). `hVHDL_fixed_point`'s
+  `lut_divider` and `full_range_sqrt` now take each stage's shift from
+  prefix zero tests (`get_leading_zero_groups()`) instead of the count, bit
+  exact, and the AXC3000 meets 120 MHz by 0.75 ns with its worst path
+  elsewhere. `axc3000/build.sh` now
   fails on a negative slack in the timing summary and deletes the `.sof`,
   as the Alchitry build refuses to write a bitstream; Quartus writes one
   whatever the timing, and this violation passed the hardware test at room
@@ -376,10 +383,10 @@ the program.
 
   | board | clock | RAM output register | DSP request registers | calculators | divider / √ | setup slack |
   |---|---|---|---|---|---|---|
-  | Ti60 EVM | 120 MHz | off | off | 4 | 10 | +3.11 ns |
-  | Alchitry Au+ (pre-adder and product registered) | 120 MHz | off | off | 6 | 14 | +0.22 ns |
-  | AXC3000 | 120 MHz | on | off | 5 | 11 | +0.03 ns |
-  | Trion T120 (pre-adder registered) | 60 MHz | on | on | 7 | 15 | +4.45 ns (Fmax 81.9 MHz) |
+  | Ti60 EVM | 120 MHz | off | off | 4 | 10 | +2.74 ns |
+  | Alchitry Au+ (pre-adder and product registered) | 120 MHz | off | off | 6 | 14 | +0.44 ns |
+  | AXC3000 | 120 MHz | on | off | 5 | 11 | +0.75 ns |
+  | Trion T120 (pre-adder registered) | 60 MHz | on | on | 7 | 15 | +5.73 ns (Fmax 91.4 MHz) |
 
   On the AXC3000 the M20K read register straight into a DSP misses 120 MHz
   by 0.41 ns, so it keeps the RAM output register. The Trion starts with
