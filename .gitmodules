@@ -7,3 +7,6 @@
 [submodule "source/efinix_spi_communication"]
 	path = source/efinix_spi_communication
 	url = https://github.com/johonkanen/efinix_spi_communication.git
+[submodule "source/hVHDL_microprogam_processor"]
+	path = source/hVHDL_microprogam_processor
+	url = https://github.com/hVHDL/hVHDL_microprogam_processor.git

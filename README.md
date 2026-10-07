@@ -21,7 +21,8 @@ same serial protocol frames, so a build only compiles its own link.
 
 ```
 source/                       submodules (hVHDL_fixed_point, fpga_communication,
-                              efinix_spi_communication) and the shared core
+                              efinix_spi_communication,
+                              hVHDL_microprogam_processor) and the shared core
   hw_test_core.vhd            board-independent register block
   lut_sweep.vhd, divider_sweep.vhd, sqrt_sweep.vhd   test engines
 testbench/hw_test_core_tb.vhd over the UART, or SPI with use_spi
