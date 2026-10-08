@@ -363,7 +363,10 @@ begin
         constant mproc_ram_base : natural := 256;
         constant mproc_radix    : natural := 20;
         -- both processors' result latency, the run times follow it
-        constant mproc_latency  : natural := work.execution_unit_pkg.fixed_point_result_latency(pre_add_register, product_register, mproc_data_ram_register);
+        -- hw_test_core's default forwards the processors' data ram writes
+        constant mproc_latency  : natural := work.execution_unit_pkg.fixed_point_result_latency(pre_add_register, product_register
+            , mproc_data_ram_register, data_forwarding => true);
+        constant mproc_forwarded : natural := work.execution_unit_pkg.forwarded_clocks(mproc_data_ram_register, true);
         constant mproc_slots    : natural := work.microprogram_interface_pkg.jump_delay_slots(mproc_program_ram_register);
 
         function mult_add (a, b, c : std_logic_vector(31 downto 0)) return std_logic_vector is
@@ -579,7 +582,7 @@ begin
 
         -- microprogram processor, program 0 : one of each command
         check_register(mproc_base + 5, mproc_radix);
-        check_register(mproc_base + 12, mproc_latency);
+        check_register(mproc_base + 12, mproc_latency + 256 * mproc_forwarded);
         check_register(mproc_base + 13, mproc_slots);
         -- hw_test_core's default program cache : static lines for 0 and
         -- 128, their runs mproc_slots shorter from the first, and 4 dynamic lines
@@ -593,7 +596,7 @@ begin
             write_register(mproc_ram_base + i, operands(i));
         end loop;
         check_register(mproc_ram_base + 70, operands(70));
-        run_program(0, clocks => 12 + mproc_latency);
+        run_program(0, clocks => 12 + mproc_latency + mproc_forwarded);
         check_register(mproc_ram_base + 1, mult_add(operands(64), operands(65), operands(66)));
         check_register(mproc_ram_base + 2, mult_sub(operands(67), operands(68), operands(69)));
         check_register(mproc_ram_base + 3, mult_add(minus(operands(70)), operands(71), operands(72)));
@@ -612,7 +615,7 @@ begin
             y := mult_add(sum(std_logic_vector(to_signed(3 * 2**mproc_radix, 32)), minus(y))
                 , std_logic_vector(to_signed(2**mproc_radix / 20, 32)), y);
         end loop;
-        run_program(32, clocks => 4 + mproc_slots + 100 * mproc_latency);
+        run_program(32, clocks => 4 + mproc_slots + 100 * mproc_latency + mproc_forwarded);
         check_register(mproc_ram_base + 96, y);
 
         -- program 128 : one boost converter step from its initial data
@@ -621,7 +624,7 @@ begin
         i_state := to_fixed(0.0);
         u_state := to_fixed(12.0);
         boost_steps(1, i_state, u_state, to_fixed(20.0), to_fixed(0.8), to_fixed(0.0), to_fixed(0.8), to_fixed(0.7 / 3.0), to_fixed(0.7 / 3.0));
-        run_program(128, clocks => 3 + 3 * mproc_latency);
+        run_program(128, clocks => 3 + 3 * mproc_latency + mproc_forwarded);
         check_register(mproc_ram_base + 106, i_state);
         check_register(mproc_ram_base + 107, u_state);
 
@@ -672,7 +675,7 @@ begin
             exit when data1 = x"00000000";
         end loop;
         check_register(mproc36_base + 3, 1);
-        check_register(mproc36_base + 4, 12 + mproc_latency); -- from its static line
+        check_register(mproc36_base + 4, 12 + mproc_latency + mproc_forwarded); -- from its static line
         check_word36(1, mult_add36(operands36(64), operands36(65), operands36(66)));
         check_word36(2, mult_add36(operands36(67), operands36(68), operands36(69), subtract => true));
         check_word36(3, mult_add36(-operands36(70), operands36(71), operands36(72)));
@@ -703,7 +706,7 @@ begin
         check_register(mproc_base + 14, 0);
         check_register(mproc36_base + 14, work.execution_unit_pkg.fixed_math_result_latency(
             pre_add_register, product_register, mproc_data_ram_register, mproc_divider_shifter_stages,
-            mproc_math_ram_register, mproc_math_request_register));
+            mproc_math_ram_register, mproc_math_request_register, data_forwarding => true));
         write_word36(110, to_signed(5 * 2**23, 36));       --  2.5 at radix 24
         write_word36(111, to_signed(-3 * 2**22, 36));      -- -0.75
         write_word36(114, signed(x(3 downto 0)) & signed(y));

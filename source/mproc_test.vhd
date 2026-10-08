@@ -19,8 +19,11 @@
 --   +10: instruction width (g_instruction_length)                 RO
 --   +11: data ram words, as far as the instructions' address fields
 --        reach : 128 for 32 bit instructions, 256 for 36           RO
---   +12: result latency L : an instruction reads the result of one
---        at least L instructions before it                        RO
+--   +12: bits 7..0 the result latency L : an instruction reads the
+--        result of one at least L instructions before it ; bits
+--        11..8 the clocks data forwarding takes off it, F, 0
+--        without g_data_forwarding : program_end still waits for the
+--        last write to reach the data ram, F more                 RO
 --   +13: jump delay slots S, 3 with the program ram's output
 --        register, 2 without                                      RO
 --   +14: the math unit's result latency, 0 without one            RO
@@ -115,6 +118,9 @@ entity mproc_test is
         -- the processor's rams' output registers, microprogram_core's
         ;g_program_ram_output_register : boolean := true
         ;g_data_ram_output_register    : boolean := true
+        -- the data ram's writes forwarded to the reads in the clocks
+        -- before they land, a shorter result latency
+        ;g_data_forwarding : boolean := false
         -- the sequencer's program cache : a repeated start takes the
         -- program's first instructions from a cache line, jump delay slots
         -- clocks sooner
@@ -173,7 +179,7 @@ architecture rtl of mproc_test is
     begin
         if g_math_unit then
             return fixed_math_result_latency(g_math_pre_add_register, g_math_product_register, g_data_ram_output_register,
-                g_divider_shifter_stages, g_math_ram_output_register, g_math_dsp_request_register);
+                g_divider_shifter_stages, g_math_ram_output_register, g_math_dsp_request_register, g_data_forwarding);
         end if;
         return 0;
     end choose_math_latency;
@@ -185,9 +191,11 @@ architecture rtl of mproc_test is
         instruction_width => instruction_length
         ,data_width       => word_length
         ,radix            => g_radix
-        ,result_latency   => fixed_point_result_latency(g_pre_add_register, g_product_register, g_data_ram_output_register)
+        ,result_latency   => fixed_point_result_latency(g_pre_add_register, g_product_register, g_data_ram_output_register
+            , g_data_forwarding)
         ,delay_slots      => jump_delay_slots(g_program_ram_output_register)
-        ,math_latency     => math_latency);
+        ,math_latency     => math_latency
+        ,forwarded        => forwarded_clocks(g_data_ram_output_register, g_data_forwarding));
 
     constant one_of_each : microprogram := (
          mi(mpy_add          , 1 , 64 , 65 , 66)
@@ -343,7 +351,7 @@ begin
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 9, std_logic_vector(to_unsigned(word_length, 32)));
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 10, std_logic_vector(to_unsigned(instruction_length, 32)));
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 11, std_logic_vector(to_unsigned(ram_size, 32)));
-            connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 12, std_logic_vector(to_unsigned(config.result_latency, 32)));
+            connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 12, std_logic_vector(to_unsigned(config.result_latency + 256 * config.forwarded, 32)));
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 13, std_logic_vector(to_unsigned(config.delay_slots, 32)));
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 14, std_logic_vector(to_unsigned(config.math_latency, 32)));
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 15
@@ -425,6 +433,7 @@ begin
     generic map (g_program => test_program, g_data => program_data
         ,g_program_ram_output_register => g_program_ram_output_register
         ,g_data_ram_output_register    => g_data_ram_output_register
+        ,g_data_forwarding             => g_data_forwarding
         ,g_program_cache               => g_program_cache
         ,g_dynamic_lines               => g_dynamic_lines
         ,g_cached_programs             => cached_programs)

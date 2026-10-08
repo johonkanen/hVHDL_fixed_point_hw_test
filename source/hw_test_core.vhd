@@ -107,6 +107,10 @@ entity hw_test_core is
         -- and a result is readable a clock sooner
         ;g_mproc_program_ram_output_register : boolean := true
         ;g_mproc_data_ram_output_register    : boolean := true
+        -- the processors' data ram writes forwarded to the reads before
+        -- they land : a result latency 1 shorter, 2 with the data ram's
+        -- output register
+        ;g_mproc_data_forwarding : boolean := true
         -- the processors' program cache, a repeated start a delay slot
         -- count of clocks sooner
         ;g_mproc_program_cache : boolean := true
@@ -561,6 +565,7 @@ begin
         ,g_product_register => g_dsp_product_register
         ,g_program_ram_output_register => g_mproc_program_ram_output_register
         ,g_data_ram_output_register    => g_mproc_data_ram_output_register
+        ,g_data_forwarding             => g_mproc_data_forwarding
         ,g_program_cache               => g_mproc_program_cache
         ,g_dynamic_lines               => g_mproc_dynamic_lines
         ,g_static_cache                => g_mproc_static_cache)
@@ -583,6 +588,7 @@ begin
         ,g_product_register => g_dsp_product_register
         ,g_program_ram_output_register => g_mproc_program_ram_output_register
         ,g_data_ram_output_register    => g_mproc_data_ram_output_register
+        ,g_data_forwarding             => g_mproc_data_forwarding
         ,g_program_cache               => g_mproc_program_cache
         ,g_dynamic_lines               => g_mproc_dynamic_lines
         ,g_static_cache                => g_mproc_static_cache)

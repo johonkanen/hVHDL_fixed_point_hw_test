@@ -68,12 +68,12 @@ Register map (source/hw_test_core.vhd) :
     134 bit 0 : boost converter model (program 128) in the background RW
     135 clock edges between background runs   136 background runs   RW/RO
     137 data word width   138 instruction width   139 data ram words  RO
-    140 result latency L : the programs are scheduled for it      RO
+    140 result latency L, bits 11..8 forwarded clocks F         RO
     141 jump delay slots S, 2 without the program ram's register    RO
     142 the math unit's result latency, 0 without one               RO
     143 program cache : bits 7..0 depth C, bit 8 static 0 and 128, 15..12 dynamic lines RO
-        run times 0 : 12 + S + L, 32 : 4 + S + 100 L,
-        128 : 3 + S + 3 L, 192 : 4 + S + L
+        run times 0 : 12 + S + L + F, 32 : 4 + S + 100 L + F,
+        128 : 3 + S + 3 L + F, 192 : 4 + S + L + F
     384..511 the data ram's bits above 31 (none at 32 bits)          RW
 
     the same with 36 bit data and instructions (8 bit address fields,
@@ -852,7 +852,11 @@ class Mproc:
         self.ram_size = uart.read(base + 11)
         # the result latency : the run times follow it, the programs are
         # laid out for it by the processor's schedule() and repeat()
-        self.latency = uart.read(base + 12)
+        # and the clocks data forwarding takes off it : program_end waits
+        # for the last write to reach the data ram, that many more
+        latency = uart.read(base + 12)
+        self.latency = latency & 0xFF
+        self.forwarded = (latency >> 8) & 0xF
         # the jump delay slots, 2 without the program ram's output register
         self.slots = uart.read(base + 13)
         # the math unit's result latency, 0 without one
@@ -914,9 +918,9 @@ def run_microprogram_processor(uart, rounds, r):
 
 def run_mproc(mp, rounds, r):
     w, radix = mp.w, mp.radix
-    latency, slots = mp.latency, mp.slots
+    latency, slots, forwarded = mp.latency, mp.slots, mp.forwarded
     print(f"microprogram processor, {w} bit data and {mp.uart.read(mp.base + 10)} bit instructions, "
-          f"fixed_mult_add at radix {radix}, result latency {latency}, jump delay slots {slots}, "
+          f"fixed_mult_add at radix {radix}, result latency {latency} ({forwarded} forwarded), jump delay slots {slots}, "
           f"program cache depth {mp.cache}, static lines {sorted(mp.static)}, "
           f"{len(mp.lines)} dynamic lines")
     mp.uart.write(mp.base + 6, 0)
@@ -939,7 +943,7 @@ def run_mproc(mp, rounds, r):
         expected = mproc_ops_model(m, radix, w)
         wrong += [f"address {k + 1} {g} expected {e}" for k, (g, e) in enumerate(zip(got, expected)) if g != e]
     r.check(f"{len(runs)} runs of the 7 multiply-add commands and the accumulator", not wrong, ", ".join(wrong[:3]))
-    r.check(f"program 0 ready once in {12 + slots + latency} clock edges", all(run == (1, 12 + slots + latency) for run in runs),
+    r.check(f"program 0 ready once in {12 + slots + latency + forwarded} clock edges", all(run == (1, 12 + slots + latency + forwarded) for run in runs),
             f"ready pulses, clock edges {sorted(set(runs))}")
 
     wrong, runs = [], []
@@ -952,7 +956,7 @@ def run_mproc(mp, rounds, r):
         if got != expected:
             wrong.append(f"y {y} u {u} g {g} -> {got} expected {expected}")
     r.check("10 runs of a 100 round low pass filter loop", not wrong, ", ".join(wrong[:2]))
-    r.check(f"program 32 ready once in {4 + slots + 100 * latency} clock edges", all(run == (1, 4 + slots + 100 * latency) for run in runs),
+    r.check(f"program 32 ready once in {4 + slots + 100 * latency + forwarded} clock edges", all(run == (1, 4 + slots + 100 * latency + forwarded) for run in runs),
             f"ready pulses, clock edges {sorted(set(runs))}")
 
     if mp.ram_size > 128:
@@ -968,7 +972,7 @@ def run_mproc(mp, rounds, r):
             if got != expected:
                 wrong.append(f"{got} expected {expected}")
         r.check(f"10 runs of program 192, operands and results above 127", not wrong, ", ".join(wrong[:2]))
-        r.check(f"program 192 ready once in {4 + slots + latency} clock edges", all(run == (1, 4 + slots + latency) for run in runs),
+        r.check(f"program 192 ready once in {4 + slots + latency + forwarded} clock edges", all(run == (1, 4 + slots + latency + forwarded) for run in runs),
                 f"ready pulses, clock edges {sorted(set(runs))}")
 
     if mp.math_latency:
@@ -1102,8 +1106,8 @@ def run_boost_converter(mp, r):
             if got != (i, u):
                 wrong.append(f"{got} expected {(i, u)}")
     r.check(f"{len(runs)} boost converter steps run from the host", not wrong, ", ".join(wrong[:2]))
-    r.check(f"program 128 ready once in {3 + mp.slots + 3 * mp.latency} clock edges",
-            all(run == (1, 3 + mp.slots + 3 * mp.latency) for run in runs),
+    r.check(f"program 128 ready once in {3 + mp.slots + 3 * mp.latency + mp.forwarded} clock edges",
+            all(run == (1, 3 + mp.slots + 3 * mp.latency + mp.forwarded) for run in runs),
             f"ready pulses, clock edges {sorted(set(runs))}")
 
     # in the background, replayed for the number of runs it made
