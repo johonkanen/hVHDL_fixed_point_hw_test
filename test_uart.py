@@ -71,7 +71,7 @@ Register map (source/hw_test_core.vhd) :
     140 result latency L : the programs are scheduled for it      RO
     141 jump delay slots S, 2 without the program ram's register    RO
     142 the math unit's result latency, 0 without one               RO
-    143 program cache : bits 7..0 depth C, bit 8 static 0 and 128, bit 9 dynamic RO
+    143 program cache : bits 7..0 depth C, bit 8 static 0 and 128, 15..12 dynamic lines RO
         run times 0 : 12 + S + L, 32 : 4 + S + 100 L,
         128 : 3 + S + 3 L, 192 : 4 + S + L
     384..511 the data ram's bits above 31 (none at 32 bits)          RW
@@ -858,15 +858,17 @@ class Mproc:
         # the math unit's result latency, 0 without one
         self.math_latency = uart.read(base + 14)
         # the program cache : its depth, 0 without one, the programs in
-        # static lines and whether it has a dynamic line. A start from a
-        # line takes depth clock edges less : a static line's program
-        # always, the dynamic line's when it was started last of the others
+        # static lines and its dynamic lines. A start from a line takes
+        # depth clock edges less : a static line's program always, another
+        # while a dynamic line holds it. A miss fills the dynamic lines in
+        # turn, the test programs have no jump or program_end in a line
         cache = uart.read(base + 15)
         self.cache = cache & 0xFF
         self.static = {0, 128} if cache & 0x100 else set()
-        self.dynamic = bool(cache & 0x200)
-        self.last_start = None
+        self.lines = [None] * ((cache >> 12) & 0xF)
+        self.next_line = 0
         self.cached_runs = 0
+        self.last_hit = False
 
     def write(self, address, value):
         if self.w > 32:
@@ -881,18 +883,20 @@ class Mproc:
 
     def run(self, start):
         """ready pulses and the clock edges to ready, the edges as without
-        the cache : a start of the program started last is a cache hit,
-        its depth shorter, and has it added back"""
+        the cache : a start the cache model predicts a hit is its depth
+        shorter and has it added back"""
         self.uart.write(self.base + 0, start)
         self.uart.write(self.base + 1, 1)
         for _ in range(100):
             if self.uart.read(self.base + 2) == 0:
                 break
-        hit = start in self.static or (self.dynamic and start == self.last_start)
+        hit = start in self.static or start in self.lines
+        if not hit and self.lines:
+            self.lines[self.next_line] = start
+            self.next_line = (self.next_line + 1) % len(self.lines)
         saved = self.cache if hit else 0
         self.cached_runs += hit
-        if start not in self.static:
-            self.last_start = start
+        self.last_hit = hit
         return self.uart.read(self.base + 3), self.uart.read(self.base + 4) + saved
 
     def write_boost(self, **values):
@@ -914,7 +918,7 @@ def run_mproc(mp, rounds, r):
     print(f"microprogram processor, {w} bit data and {mp.uart.read(mp.base + 10)} bit instructions, "
           f"fixed_mult_add at radix {radix}, result latency {latency}, jump delay slots {slots}, "
           f"program cache depth {mp.cache}, static lines {sorted(mp.static)}, "
-          f"{'a' if mp.dynamic else 'no'} dynamic line")
+          f"{len(mp.lines)} dynamic lines")
     mp.uart.write(mp.base + 6, 0)
 
     values = [wrap(r.random.getrandbits(w), w) for _ in range(mp.ram_size)]
@@ -970,11 +974,35 @@ def run_mproc(mp, rounds, r):
     if mp.math_latency:
         run_math_unit(mp, r)
 
+    run_program_cache(mp, r)
     run_boost_converter(mp, r)
 
     if mp.cache:
         r.check(f"{mp.cached_runs} runs from the program cache, {mp.cache} clock edges shorter",
                 mp.cached_runs > 0, "no repeated starts")
+
+
+def run_program_cache(mp, r):
+    """the programs without a static line in turn : as many as the dynamic
+    lines stay cached, one more and each start replaces the line the next
+    one needs"""
+    programs = [start for start, present in ((32, True), (192, mp.ram_size > 128), (224, mp.math_latency > 0),
+                                             (288, mp.math_latency > 0), (352, mp.math_latency > 0)) if present]
+    lines = len(mp.lines)
+    for n in (lines, lines + 1):
+        if n == 0 or n > len(programs):
+            continue
+        hits, lengths = [], {}
+        for round in range(3):
+            for start in programs[:n]:
+                pulses, edges = mp.run(start)
+                lengths.setdefault(start, set()).add((pulses, edges))
+                if round > 0:
+                    hits.append(mp.last_hit)
+        expected = n == lines
+        r.check(f"{n} programs in turn with {lines} dynamic lines : {'all' if expected else 'none'} from the cache",
+                all(hit == expected for hit in hits) and all(len(v) == 1 for v in lengths.values()),
+                f"ready pulses, clock edges {lengths}")
 
 
 # the math unit's lut_divider table : 512 x 18 bits at radix 16, 18 bit x_frac

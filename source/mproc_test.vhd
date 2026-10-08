@@ -26,9 +26,10 @@
 --   +14: the math unit's result latency, 0 without one            RO
 --   +15: the program cache : bits 7..0 its depth S, 0 without one,
 --        bit 8 programs 0 and 128 in static lines (g_static_cache),
---        bit 9 a dynamic line (g_program_cache). A start from a line
---        takes S clocks less : a static line's program from the first
---        start on, the dynamic line's when started last           RO
+--        bits 15..12 the dynamic lines, 0 without g_program_cache. A
+--        start from a line takes S clocks less : a static line's
+--        program from the first start on, a dynamic line's while its
+--        line holds it, a miss takes the dynamic lines in turn      RO
 --
 -- the data ram, of g_word_length bits, from g_ram_base_address, bits
 -- 31..0 :
@@ -118,6 +119,7 @@ entity mproc_test is
         -- program's first instructions from a cache line, jump delay slots
         -- clocks sooner
         ;g_program_cache : boolean := false
+        ;g_dynamic_lines : positive := 1
         -- static program cache lines for programs 0 and 128 (the boost
         -- converter), a start from them S clocks sooner from the first on
         ;g_static_cache : boolean := false
@@ -346,7 +348,7 @@ begin
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 14, std_logic_vector(to_unsigned(config.math_latency, 32)));
             connect_read_only_data_to_address(bus_in, bus_out, g_base_address + 15
                 , std_logic_vector(to_unsigned(config.delay_slots * boolean'pos(g_program_cache or g_static_cache)
-                    + 256 * boolean'pos(g_static_cache) + 512 * boolean'pos(g_program_cache), 32)));
+                    + 256 * boolean'pos(g_static_cache) + 4096 * g_dynamic_lines * boolean'pos(g_program_cache), 32)));
 
             if write_is_requested_to_address(bus_in, g_base_address + 1) then
                 calculate(mproc_in, to_integer(unsigned(start_address(9 downto 0))));
@@ -424,6 +426,7 @@ begin
         ,g_program_ram_output_register => g_program_ram_output_register
         ,g_data_ram_output_register    => g_data_ram_output_register
         ,g_program_cache               => g_program_cache
+        ,g_dynamic_lines               => g_dynamic_lines
         ,g_cached_programs             => cached_programs)
     port map (
         clock            => clock

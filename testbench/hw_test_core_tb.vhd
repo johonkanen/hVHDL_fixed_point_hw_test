@@ -582,8 +582,8 @@ begin
         check_register(mproc_base + 12, mproc_latency);
         check_register(mproc_base + 13, mproc_slots);
         -- hw_test_core's default program cache : static lines for 0 and
-        -- 128, their runs mproc_slots shorter from the first, and a dynamic line
-        check_register(mproc_base + 15, mproc_slots + 256 + 512);
+        -- 128, their runs mproc_slots shorter from the first, and 4 dynamic lines
+        check_register(mproc_base + 15, mproc_slots + 256 + 4 * 4096);
         write_register(mproc_ram_base + 1, x"5a5a5a5a"); -- program 0 overwrites it
         check_register(mproc_ram_base + 1, x"5a5a5a5a");
         x := x"1234abcd";
