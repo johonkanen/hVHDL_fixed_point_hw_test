@@ -19,7 +19,7 @@
         <efx:design_file name="../source/hVHDL_fixed_point/reciprocal_calculator/reciprocal_calculator.vhd" version="default" library="default" />
         <efx:design_file name="../source/hVHDL_fixed_point/lut_interpolation/lut_sqrt_pkg.vhd" version="default" library="default" />
         <efx:design_file name="../source/hVHDL_fixed_point/sqrt_calculator/sqrt_calculator.vhd" version="default" library="default" />
-        <efx:design_file name="../source/hVHDL_fixed_point/fixed_point_scaling/fixed_point_scaling_pkg.vhd" version="default" library="default" />
+        <efx:design_file name="../source/hVHDL_fixed_point/leading_zeros/leading_zeros_pkg.vhd" version="default" library="default" />
         <efx:design_file name="../source/hVHDL_fixed_point/lut_divider/lut_divider.vhd" version="default" library="default" />
         <efx:design_file name="../source/hVHDL_fixed_point/full_range_sqrt/full_range_sqrt.vhd" version="default" library="default" />
         <efx:design_file name="../source/hVHDL_fixed_point/submodules/hVHDL_memory_library/vhdl2008/mpram_w_configurable_records.vhd" version="default" library="default" />

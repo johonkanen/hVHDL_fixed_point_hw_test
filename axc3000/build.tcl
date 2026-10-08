@@ -62,7 +62,7 @@ set_global_assignment -name VHDL_FILE $fixed_dir/lut_interpolation/lut_reciproca
 set_global_assignment -name VHDL_FILE $fixed_dir/reciprocal_calculator/reciprocal_calculator.vhd
 set_global_assignment -name VHDL_FILE $fixed_dir/lut_interpolation/lut_sqrt_pkg.vhd
 set_global_assignment -name VHDL_FILE $fixed_dir/sqrt_calculator/sqrt_calculator.vhd
-set_global_assignment -name VHDL_FILE $fixed_dir/fixed_point_scaling/fixed_point_scaling_pkg.vhd
+set_global_assignment -name VHDL_FILE $fixed_dir/leading_zeros/leading_zeros_pkg.vhd
 set_global_assignment -name VHDL_FILE $fixed_dir/lut_divider/lut_divider.vhd
 set_global_assignment -name VHDL_FILE $fixed_dir/full_range_sqrt/full_range_sqrt.vhd
 set_global_assignment -name VHDL_FILE $fixed_dir/submodules/hVHDL_memory_library/vhdl2008/mpram_w_configurable_records.vhd

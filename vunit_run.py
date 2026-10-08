@@ -43,7 +43,7 @@ lib.add_source_files(FIXED / "lut_interpolation/lut_reciprocal_pkg.vhd")
 lib.add_source_files(FIXED / "reciprocal_calculator/reciprocal_calculator.vhd")
 lib.add_source_files(FIXED / "lut_interpolation/lut_sqrt_pkg.vhd")
 lib.add_source_files(FIXED / "sqrt_calculator/sqrt_calculator.vhd")
-lib.add_source_files(FIXED / "fixed_point_scaling/fixed_point_scaling_pkg.vhd")
+lib.add_source_files(FIXED / "leading_zeros/leading_zeros_pkg.vhd")
 lib.add_source_files(FIXED / "lut_divider/lut_divider.vhd")
 lib.add_source_files(FIXED / "full_range_sqrt/full_range_sqrt.vhd")
 
